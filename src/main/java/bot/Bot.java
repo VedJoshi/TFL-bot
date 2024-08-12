@@ -14,6 +14,7 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKe
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import org.telegram.telegrambots.updatesreceivers.DefaultBotSession;
 
+import java.io.IOException;
 import java.util.List;
 
 public class Bot extends TelegramLongPollingBot {
@@ -57,79 +58,89 @@ public class Bot extends TelegramLongPollingBot {
                 .build();
     }
 
+    private final TFLService tflApiService = new TFLService();
+
+    private void handleOverviewRequest(long chatId) {
+        try {
+            String overview = tflApiService.parseLineStatus(tflApiService.getAllLineStatuses());
+            sendText(chatId, overview);
+        } catch (IOException e) {
+            sendText(chatId, "Failed to retrieve data. Please try again.");
+        }
+    }
+
+    private void handleLineSpecificRequest(long chatId, String lineId) {
+        try {
+            String status = tflApiService.parseLineStatus(tflApiService.getLineStatus(lineId));
+            sendText(chatId, status);
+        } catch (IOException e) {
+            sendText(chatId, "Failed to retrieve data. Please try again.");
+        }
+    }
+
 
 
     @Override
     public void onUpdateReceived(Update update) {
         if (update.hasMessage() && update.getMessage().hasText()) {
-            Message msg = update.getMessage();
-            long chatId = msg.getChatId();
-            String messageText = msg.getText();
+            String messageText = update.getMessage().getText();
+            long chatId = update.getMessage().getChatId();
 
-            if (msg.isCommand()) {
-                switch (messageText) {
-                    case "/start":
-                        sendMenu(chatId, "Welcome to the bot! Use the buttons below:", keyboardM1);
-                        break;
-                    case "/help":
-                        sendMenu(chatId, "Here are some help options:", keyboardM2);
-                        break;
-                    case "/scream":
-                        screaming = true;
-                        sendText(chatId, "Screaming mode activated!");
-                        break;
-                    case "/whisper":
-                        screaming = false;
-                        sendText(chatId, "Whispering mode activated!");
-                        break;
-                    case "/menu":
-                        sendMenu(chatId, "<b>Menu 1</b>", keyboardM1);
-                        break;
-                }
-                return; // Exit after processing the command
-            }
-
-            // Handle text messages
-            if (screaming) {
-                scream(chatId, msg);
-            } else {
-                sendText(chatId, "You said: " + messageText);
+            if (messageText.equals("/start")) {
+                sendMenu(chatId, "Welcome to the AbiTFLBot! Choose an option:", getMainMenu());
             }
         } else if (update.hasCallbackQuery()) {
-            var callbackQuery = update.getCallbackQuery();
-            long chatId = callbackQuery.getMessage().getChatId();
-            String queryId = callbackQuery.getId();
-            String data = callbackQuery.getData();
-            int msgId = callbackQuery.getMessage().getMessageId();
+        String callbackData = update.getCallbackQuery().getData();
+        long chatId = update.getCallbackQuery().getMessage().getChatId();
 
-            try {
-                buttonTap(chatId, queryId, data, msgId);
-            } catch (TelegramApiException e) {
-                throw new RuntimeException(e);
-            }
+        if (callbackData.equals("overview")) {
+            sendText(chatId, "Fetching overview...");
+            // fetching and receiving here
+        } else if (callbackData.equals("line")) {
+            sendText(chatId, "Please enter the line name (e.g., central, piccadilly):");
         }
+    }
+    }
+
+    private InlineKeyboardMarkup getMainMenu() {
+        var overviewButton = InlineKeyboardButton.builder()
+                .text("Overview").callbackData("overview")
+                .build();
+
+        var lineButton = InlineKeyboardButton.builder()
+                .text("Line Specific").callbackData("line")
+                .build();
+
+        return InlineKeyboardMarkup.builder()
+                .keyboardRow(List.of(overviewButton, lineButton))
+                .build();
     }
 
 
-    public void sendMenu(Long who, String txt, InlineKeyboardMarkup kb){
-        SendMessage sm = SendMessage.builder().chatId(who.toString())
-                .parseMode("HTML").text(txt)
-                .replyMarkup(kb).build();
+    private void sendMenu(Long chatId, String text, InlineKeyboardMarkup keyboard) {
+        SendMessage message = SendMessage.builder()
+                .chatId(chatId.toString())
+                .parseMode("HTML")
+                .text(text)
+                .replyMarkup(keyboard)
+                .build();
 
         try {
-            execute(sm);
+            execute(message);
         } catch (TelegramApiException e) {
-            throw new RuntimeException(e);
+            e.printStackTrace();
         }
     }
-    public void sendText(Long who, String what){
-        SendMessage sm = SendMessage.builder()
-                .chatId(who.toString()) //Who are we sending a message to
-                .text(what).build();    //Message content
+    private void sendText(Long chatId, String text) {
+        SendMessage message = SendMessage.builder()
+                .chatId(chatId.toString())
+                .text(text)
+                .build();
+
         try {
-            execute(sm);                        //Actually sending the message
+            execute(message);
         } catch (TelegramApiException e) {
-            throw new RuntimeException(e);      //Any error will be printed here
+            e.printStackTrace();
         }
     }
 
