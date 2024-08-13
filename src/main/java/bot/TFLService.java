@@ -6,6 +6,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Scanner;
 
 public class TFLService {
@@ -22,6 +24,21 @@ public class TFLService {
     public String getLineStatus(String lineId) throws IOException {
         String endpoint = API_BASE_URL + "/line/" + lineId + "/status";
         return getResponse(endpoint);
+    }
+
+    public List<String> getAllLineNames() throws IOException {
+        String endpoint = API_BASE_URL + "/line/mode/tube";
+        String response = getResponse(endpoint);
+
+        List<String> lineNames = new ArrayList<>();
+        ObjectMapper mapper = new ObjectMapper();
+        JsonNode rootNode = mapper.readTree(response);
+
+        for (JsonNode line : rootNode) {
+            lineNames.add(line.get("name").asText());
+        }
+
+        return lineNames;
     }
 
     private String getResponse(String endpoint) throws IOException {

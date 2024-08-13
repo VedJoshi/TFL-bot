@@ -8,13 +8,18 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMa
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import org.telegram.telegrambots.updatesreceivers.DefaultBotSession;
+import io.github.cdimascio.dotenv.Dotenv;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 
 public class Bot extends TelegramLongPollingBot {
 
     private final TFLService tflApiService = new TFLService();
+
+    private final Dotenv dotenv = Dotenv.load();
+
     private boolean awaitingLineName = false; // Flag to track when the bot is waiting for the line name input
 
     @Override
@@ -24,9 +29,9 @@ public class Bot extends TelegramLongPollingBot {
 
     @Override
     public String getBotToken() {
-        return "7452383443:AAFF78bDNVsn82kZTP8tQ6CGSc2EL7t19tU";
+        String token = dotenv.get("TELEBOT_API_KEY");
+        return token;
     }
-
     @Override
     public void onUpdateReceived(Update update) {
         if (update.hasMessage() && update.getMessage().hasText()) {
@@ -49,9 +54,15 @@ public class Bot extends TelegramLongPollingBot {
                 // Handle the overview request when the "Overview" button is clicked
                 handleOverviewRequest(chatId);
             } else if (callbackData.equals("line")) {
-                // Prompt the user to enter the line name when the "Line Specific" button is clicked
-                sendText(chatId, "Please enter the line name (e.g., central, piccadilly):");
-                awaitingLineName = true; // Set the flag to true to wait for the user's input
+                // Show line-specific options when the "Line Specific" button is clicked
+                try {
+                    sendLineOptions(chatId);
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+            } else {
+                // Assume any other callback data is a line-specific request
+                handleLineSpecificRequest(chatId, callbackData);
             }
         }
     }
@@ -72,6 +83,27 @@ public class Bot extends TelegramLongPollingBot {
         return InlineKeyboardMarkup.builder()
                 .keyboardRow(List.of(overviewButton, lineButton))
                 .build();
+    }
+
+    private void sendLineOptions(Long chatId) throws IOException {
+        try {
+            List<String> lineNames = tflApiService.getAllLineNames();
+            List<List<InlineKeyboardButton>> buttons = new ArrayList<>();
+
+            for (String line : lineNames) {
+                InlineKeyboardButton button = InlineKeyboardButton.builder()
+                        .text(line.substring(0, 1).toUpperCase() + line.substring(1))
+                        .callbackData(line.toLowerCase())
+                        .build();
+                buttons.add(List.of(button));
+            }
+            InlineKeyboardMarkup keyboard = InlineKeyboardMarkup.builder()
+                    .keyboard(buttons)
+                    .build();
+            sendMenu(chatId, "Please select a line:", keyboard);
+        } catch (IOException e) {
+            sendText(chatId, "Failed to retrieve data. Please try again.");
+        }
     }
 
     private void sendMenu(Long chatId, String text, InlineKeyboardMarkup keyboard) {
