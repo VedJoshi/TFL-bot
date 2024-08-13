@@ -55,11 +55,7 @@ public class Bot extends TelegramLongPollingBot {
                 handleOverviewRequest(chatId);
             } else if (callbackData.equals("line")) {
                 // Show line-specific options when the "Line Specific" button is clicked
-                try {
-                    sendLineOptions(chatId);
-                } catch (IOException e) {
-                    throw new RuntimeException(e);
-                }
+                sendLineOptions(chatId);
             } else {
                 // Assume any other callback data is a line-specific request
                 handleLineSpecificRequest(chatId, callbackData);
@@ -68,7 +64,6 @@ public class Bot extends TelegramLongPollingBot {
     }
 
     private InlineKeyboardMarkup getMainMenu() {
-        // Create buttons for "Overview" and "Line Specific"
         var overviewButton = InlineKeyboardButton.builder()
                 .text("Overview")
                 .callbackData("overview")
@@ -79,32 +74,45 @@ public class Bot extends TelegramLongPollingBot {
                 .callbackData("line")
                 .build();
 
-        // Create an inline keyboard with the buttons
         return InlineKeyboardMarkup.builder()
                 .keyboardRow(List.of(overviewButton, lineButton))
                 .build();
     }
 
-    private void sendLineOptions(Long chatId) throws IOException {
-        try {
-            List<String> lineNames = tflApiService.getAllLineNames();
-            List<List<InlineKeyboardButton>> buttons = new ArrayList<>();
+    private void sendLineOptions(Long chatId) {
+        // Define the lines in a custom layout
+        List<List<InlineKeyboardButton>> buttons = new ArrayList<>();
 
-            for (String line : lineNames) {
-                InlineKeyboardButton button = InlineKeyboardButton.builder()
-                        .text(line.substring(0, 1).toUpperCase() + line.substring(1))
-                        .callbackData(line.toLowerCase())
-                        .build();
-                buttons.add(List.of(button));
-            }
-            InlineKeyboardMarkup keyboard = InlineKeyboardMarkup.builder()
-                    .keyboard(buttons)
-                    .build();
-            sendMenu(chatId, "Please select a line:", keyboard);
-        } catch (IOException e) {
-            sendText(chatId, "Failed to retrieve data. Please try again.");
-        }
+        buttons.add(List.of(
+                InlineKeyboardButton.builder().text("Bakerloo").callbackData("bakerloo").build(),
+                InlineKeyboardButton.builder().text("Central").callbackData("central").build(),
+                InlineKeyboardButton.builder().text("Circle").callbackData("circle").build()
+        ));
+
+        buttons.add(List.of(
+                InlineKeyboardButton.builder().text("District").callbackData("district").build(),
+                InlineKeyboardButton.builder().text("Waterloo & City").callbackData("waterloo-city").build(),
+                InlineKeyboardButton.builder().text("Jubilee").callbackData("jubilee").build()
+        ));
+
+        buttons.add(List.of(
+                InlineKeyboardButton.builder().text("Metropolitan").callbackData("metropolitan").build(),
+                InlineKeyboardButton.builder().text("Northern").callbackData("northern").build(),
+                InlineKeyboardButton.builder().text("Piccadilly").callbackData("piccadilly").build()
+        ));
+
+        buttons.add(List.of(
+                InlineKeyboardButton.builder().text("Victoria").callbackData("victoria").build(),
+                InlineKeyboardButton.builder().text("Hammersmith & City").callbackData("hammersmith-city").build()
+        ));
+
+        InlineKeyboardMarkup keyboard = InlineKeyboardMarkup.builder()
+                .keyboard(buttons)
+                .build();
+
+        sendMenu(chatId, "Please select a line:", keyboard);
     }
+
 
     private void sendMenu(Long chatId, String text, InlineKeyboardMarkup keyboard) {
         SendMessage message = SendMessage.builder()
