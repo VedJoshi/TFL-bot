@@ -1,2 +1,9 @@
 bot\TFLService.class
+bot\TFLService$DisruptionInfo.class
 bot\Bot.class
+bot\UserPreferencesService.class
+bot\UserPreferencesService$NotificationSettings.class
+bot\NotificationScheduler.class
+bot\TFLService$CacheEntry.class
+bot\UserPreferencesService$UserPreferences.class
+bot\DatabaseManager.class
