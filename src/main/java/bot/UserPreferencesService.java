@@ -181,8 +181,12 @@ public class UserPreferencesService {
                 try {
                     ensureUserExists(conn, userId);
                     
-                    // Insert notification
-                    String notificationQuery = "INSERT INTO scheduled_notifications (user_id, notification_time, only_disruptions) VALUES (?, ?, ?) ON CONFLICT (user_id, notification_time) DO UPDATE SET only_disruptions = EXCLUDED.only_disruptions RETURNING id";
+                    // Insert notification with RETURNING clause to get ID
+                    String notificationQuery = "INSERT INTO scheduled_notifications (user_id, notification_time, only_disruptions) " +
+                                             "VALUES (?, ?, ?) " +
+                                             "ON CONFLICT (user_id, notification_time) " +
+                                             "DO UPDATE SET only_disruptions = EXCLUDED.only_disruptions " +
+                                             "RETURNING id";
                     int notificationId;
                     
                     try (PreparedStatement stmt = conn.prepareStatement(notificationQuery)) {
@@ -194,7 +198,7 @@ public class UserPreferencesService {
                             if (rs.next()) {
                                 notificationId = rs.getInt("id");
                             } else {
-                                throw new SQLException("Failed to insert notification");
+                                throw new SQLException("Failed to insert/update notification");
                             }
                         }
                     }
@@ -206,7 +210,7 @@ public class UserPreferencesService {
                         stmt.executeUpdate();
                     }
                     
-                    // Insert new lines
+                    // Insert new lines if any specified
                     if (!lines.isEmpty()) {
                         String lineQuery = "INSERT INTO notification_lines (notification_id, line_name) VALUES (?, ?)";
                         try (PreparedStatement stmt = conn.prepareStatement(lineQuery)) {
@@ -220,7 +224,8 @@ public class UserPreferencesService {
                     }
                     
                     conn.commit();
-                    logger.info("User {} added scheduled notification at {}", userId, time);
+                    logger.info("User {} added/updated scheduled notification at {} with {} lines", 
+                              userId, time, lines.size());
                     
                 } catch (SQLException e) {
                     conn.rollback();
@@ -235,6 +240,25 @@ public class UserPreferencesService {
         } catch (Exception e) {
             logger.error("Failed to parse time for user {}: {}", userId, time, e);
             throw new IllegalArgumentException("Invalid time format. Use HH:MM (24-hour format)");
+        }
+    }
+
+    /**
+     * Simplified method for adding notification with just time (defaults to all lines, all statuses)
+     */
+    public void addScheduledNotification(Long userId, String time) {
+        addScheduledNotification(userId, time, new HashSet<>(), false);
+    }
+
+    /**
+     * Check if a time string is valid
+     */
+    public boolean isValidTime(String time) {
+        try {
+            LocalTime.parse(time, DateTimeFormatter.ofPattern("HH:mm"));
+            return true;
+        } catch (Exception e) {
+            return false;
         }
     }
     

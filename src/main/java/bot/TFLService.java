@@ -237,10 +237,244 @@ public class TFLService {
             this.reason = reason;
         }
 
+        /**
+         * Generate a unique identifier for this disruption based on line name, severity, and description
+         */
+        public String getId() {
+            return lineName + "|" + statusSeverity + "|" + description.hashCode();
+        }
+
         @Override
         public String toString() {
             return "🚨 *" + lineName + "*: " + description +
                     (reason.isEmpty() ? "" : "\n   " + reason);
+        }
+    }
+
+    public List<JourneyOption> planJourney(String fromStation, String toStation) throws IOException {
+        String fromCode = findStationCode(fromStation);
+        String toCode = findStationCode(toStation);
+
+        if (fromCode == null || toCode == null) {
+            throw new IllegalArgumentException("Station not found");
+        }
+
+        String endpoint = API_BASE_URL + "/journey/journeyresults/" + fromCode + "/to/" + toCode;
+        String response = getCachedResponse(endpoint);
+        return parseJourneyOptions(response);
+    }
+
+    public StationInfo getStationInfo(String stationName) throws IOException {
+        String stationCode = findStationCode(stationName);
+        if (stationCode == null) {
+            throw new IllegalArgumentException("Station not found: " + stationName);
+        }
+
+        // Get station details
+        String stationEndpoint = API_BASE_URL + "/stoppoint/" + stationCode;
+        String stationResponse = getCachedResponse(stationEndpoint);
+
+        // Get live arrivals
+        String arrivalsEndpoint = API_BASE_URL + "/stoppoint/" + stationCode + "/arrivals";
+        String arrivalsResponse = getCachedResponse(arrivalsEndpoint);
+
+        return parseStationInfo(stationResponse, arrivalsResponse);
+    }
+
+    public List<ServiceUpdate> getServiceUpdates() throws IOException {
+        String endpoint = API_BASE_URL + "/line/mode/tube,overground,dlr/status";
+        String response = getCachedResponse(endpoint);
+        return parseServiceUpdates(response);
+    }
+
+    private String findStationCode(String stationName) throws IOException {
+        String endpoint = API_BASE_URL + "/stoppoint/search/" +
+                java.net.URLEncoder.encode(stationName, "UTF-8") + "?modes=tube";
+        String response = getCachedResponse(endpoint);
+        return parseStationCode(response);
+    }
+
+    private String parseStationCode(String jsonResponse) throws IOException {
+        JsonNode rootNode = mapper.readTree(jsonResponse);
+        JsonNode matchesNode = rootNode.get("matches");
+
+        if (matchesNode != null && matchesNode.isArray() && matchesNode.size() > 0) {
+            JsonNode firstMatch = matchesNode.get(0);
+            return firstMatch.path("id").asText();
+        }
+        return null;
+    }
+
+    private List<JourneyOption> parseJourneyOptions(String jsonResponse) throws IOException {
+        List<JourneyOption> options = new ArrayList<>();
+        JsonNode rootNode = mapper.readTree(jsonResponse);
+        JsonNode journeysNode = rootNode.get("journeys");
+
+        if (journeysNode != null && journeysNode.isArray()) {
+            for (int i = 0; i < Math.min(3, journeysNode.size()); i++) { // Limit to 3 options
+                JsonNode journey = journeysNode.get(i);
+                int duration = journey.path("duration").asInt();
+
+                List<String> steps = new ArrayList<>();
+                JsonNode legsNode = journey.get("legs");
+                if (legsNode != null && legsNode.isArray()) {
+                    for (JsonNode leg : legsNode) {
+                        String mode = leg.path("mode").path("name").asText();
+                        String instruction = leg.path("instruction").path("summary").asText();
+                        if (!instruction.isEmpty()) {
+                            steps.add(mode + ": " + instruction);
+                        }
+                    }
+                }
+
+                options.add(new JourneyOption(duration, steps));
+            }
+        }
+
+        return options;
+    }
+
+    private StationInfo parseStationInfo(String stationResponse, String arrivalsResponse) throws IOException {
+        JsonNode stationNode = mapper.readTree(stationResponse);
+        JsonNode arrivalsNode = mapper.readTree(arrivalsResponse);
+
+        String stationName = stationNode.path("commonName").asText();
+        List<String> facilities = new ArrayList<>();
+
+        // Parse facilities
+        JsonNode facilitiesNode = stationNode.get("additionalProperties");
+        if (facilitiesNode != null && facilitiesNode.isArray()) {
+            for (JsonNode facility : facilitiesNode) {
+                String key = facility.path("key").asText();
+                String value = facility.path("value").asText();
+                if (key.contains("accessibility") || key.contains("facility")) {
+                    facilities.add(value);
+                }
+            }
+        }
+
+        // Parse live arrivals
+        List<String> arrivals = new ArrayList<>();
+        if (arrivalsNode.isArray()) {
+            for (int i = 0; i < Math.min(5, arrivalsNode.size()); i++) { // Limit to 5 arrivals
+                JsonNode arrival = arrivalsNode.get(i);
+                String lineName = arrival.path("lineName").asText();
+                String destination = arrival.path("destinationName").asText();
+                int timeToStation = arrival.path("timeToStation").asInt();
+
+                String arrivalText = lineName + " to " + destination + " - ";
+                if (timeToStation < 60) {
+                    arrivalText += "Due";
+                } else {
+                    arrivalText += (timeToStation / 60) + " min";
+                }
+                arrivals.add(arrivalText);
+            }
+        }
+
+        return new StationInfo(stationName, facilities, arrivals);
+    }
+
+    private List<ServiceUpdate> parseServiceUpdates(String jsonResponse) throws IOException {
+        List<ServiceUpdate> updates = new ArrayList<>();
+        JsonNode rootNode = mapper.readTree(jsonResponse);
+
+        if (rootNode.isArray()) {
+            for (JsonNode line : rootNode) {
+                JsonNode nameNode = line.get("name");
+                JsonNode lineStatusesNode = line.get("lineStatuses");
+
+                if (nameNode != null && lineStatusesNode != null && lineStatusesNode.isArray()) {
+                    String lineName = nameNode.asText();
+
+                    for (JsonNode status : lineStatusesNode) {
+                        String description = status.path("statusSeverityDescription").asText();
+                        String reason = status.path("reason").asText("");
+
+                        // Only include planned works or weekend service changes
+                        if (reason.toLowerCase().contains("weekend") ||
+                                reason.toLowerCase().contains("engineering") ||
+                                reason.toLowerCase().contains("planned")) {
+                            updates.add(new ServiceUpdate(lineName, description, reason));
+                        }
+                    }
+                }
+            }
+        }
+
+        return updates;
+    }
+
+    public static class JourneyOption {
+        public final int durationMinutes;
+        public final List<String> steps;
+
+        public JourneyOption(int durationMinutes, List<String> steps) {
+            this.durationMinutes = durationMinutes;
+            this.steps = steps;
+        }
+
+        @Override
+        public String toString() {
+            StringBuilder sb = new StringBuilder();
+            sb.append("⏱️ Duration: ").append(durationMinutes).append(" minutes\n");
+            for (int i = 0; i < steps.size(); i++) {
+                sb.append(i + 1).append(". ").append(steps.get(i)).append("\n");
+            }
+            return sb.toString();
+        }
+    }
+
+    public static class StationInfo {
+        public final String name;
+        public final List<String> facilities;
+        public final List<String> liveArrivals;
+
+        public StationInfo(String name, List<String> facilities, List<String> liveArrivals) {
+            this.name = name;
+            this.facilities = facilities;
+            this.liveArrivals = liveArrivals;
+        }
+
+        @Override
+        public String toString() {
+            StringBuilder sb = new StringBuilder();
+            sb.append("🚉 *").append(name).append("*\n\n");
+
+            if (!liveArrivals.isEmpty()) {
+                sb.append("🚇 *Live Arrivals:*\n");
+                for (String arrival : liveArrivals) {
+                    sb.append("• ").append(arrival).append("\n");
+                }
+                sb.append("\n");
+            }
+
+            if (!facilities.isEmpty()) {
+                sb.append("🏢 *Facilities:*\n");
+                for (String facility : facilities) {
+                    sb.append("• ").append(facility).append("\n");
+                }
+            }
+
+            return sb.toString();
+        }
+    }
+
+    public static class ServiceUpdate {
+        public final String lineName;
+        public final String description;
+        public final String details;
+
+        public ServiceUpdate(String lineName, String description, String details) {
+            this.lineName = lineName;
+            this.description = description;
+            this.details = details;
+        }
+
+        @Override
+        public String toString() {
+            return "🔧 *" + lineName + "*: " + description +
+                    (details.isEmpty() ? "" : "\n   " + details);
         }
     }
 }
