@@ -19,6 +19,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class TFLService {
     private static final Logger logger = LoggerFactory.getLogger(TFLService.class);
     private static final String API_BASE_URL = "https://api.tfl.gov.uk";
+    private static final String APP_KEY = "***REDACTED***";
     private static final int CONNECTION_TIMEOUT = 10000; // 10 seconds
     private static final int READ_TIMEOUT = 15000; // 15 seconds
     private static final int MAX_RETRIES = 3;
@@ -42,13 +43,13 @@ public class TFLService {
         }
     }
 
-    // Get all line statuses - FIXED: Correct case sensitivity
+    // FIXED: Correct endpoint with lowercase and app_key
     public String getAllLineStatuses() throws IOException {
-        String endpoint = API_BASE_URL + "/Line/Mode/tube/Status";
+        String endpoint = API_BASE_URL + "/line/mode/tube/status?app_key=" + APP_KEY;
         return getCachedResponse(endpoint);
     }
 
-    // Get status of a specific line - FIXED: Correct case sensitivity
+    // FIXED: Correct endpoint with lowercase and app_key
     public String getLineStatus(String lineId) throws IOException {
         if (lineId == null || lineId.trim().isEmpty()) {
             throw new IllegalArgumentException("Line ID cannot be null or empty");
@@ -58,7 +59,7 @@ public class TFLService {
             throw new IllegalArgumentException("Invalid line ID: " + lineId);
         }
         
-        String endpoint = API_BASE_URL + "/Line/" + lineId.toLowerCase().replace(" ", "-") + "/Status";
+        String endpoint = API_BASE_URL + "/line/" + lineId.toLowerCase().replace(" ", "-") + "/status?app_key=" + APP_KEY;
         return getCachedResponse(endpoint);
     }
 
@@ -72,13 +73,13 @@ public class TFLService {
     }
 
     public List<String> getAllLineNames() throws IOException {
-        String endpoint = API_BASE_URL + "/Line/Mode/tube";
+        String endpoint = API_BASE_URL + "/line/mode/tube?app_key=" + APP_KEY;
         String response = getCachedResponse(endpoint);
         return parseLineNames(response);
     }
 
     public List<DisruptionInfo> getDisruptions() throws IOException {
-        String endpoint = API_BASE_URL + "/Line/Mode/tube/Status";
+        String endpoint = API_BASE_URL + "/line/mode/tube/status?app_key=" + APP_KEY;
         String response = getCachedResponse(endpoint);
         return parseDisruptions(response);
     }
@@ -90,17 +91,17 @@ public class TFLService {
     }
 
     public List<ServiceUpdate> getServiceUpdates() throws IOException {
-        String endpoint = API_BASE_URL + "/Line/Mode/tube/Status";
+        String endpoint = API_BASE_URL + "/line/mode/tube/status?app_key=" + APP_KEY;
         String response = getCachedResponse(endpoint);
         return parseServiceUpdates(response);
     }
 
-    // FIXED: Station info method with correct endpoint format
+    // FIXED: Correct endpoint format with proper case and app_key
     public StationInfo getStationInfo(String stationName) throws IOException {
         String encodedStationName = URLEncoder.encode(stationName.trim(), StandardCharsets.UTF_8);
         
-        // FIXED: Correct endpoint format with proper case and query parameter
-        String searchEndpoint = API_BASE_URL + "/StopPoint/Search?query=" + encodedStationName + "&modes=tube";
+        // FIXED: Correct endpoint format - note the capital 'S' in StopPoint
+        String searchEndpoint = API_BASE_URL + "/StopPoint/Search?query=" + encodedStationName + "&modes=tube&app_key=" + APP_KEY;
         
         logger.debug("Searching for station with endpoint: {}", searchEndpoint);
         
@@ -114,23 +115,26 @@ public class TFLService {
         logger.debug("Found station ID: {} for station: {}", stationId, stationName);
 
         // Get station details using the station ID
-        String stationEndpoint = API_BASE_URL + "/StopPoint/" + stationId;
+        String stationEndpoint = API_BASE_URL + "/StopPoint/" + stationId + "?app_key=" + APP_KEY;
         String stationResponse = getCachedResponse(stationEndpoint);
 
         // Get live arrivals using the station ID
-        String arrivalsEndpoint = API_BASE_URL + "/StopPoint/" + stationId + "/Arrivals";
+        String arrivalsEndpoint = API_BASE_URL + "/StopPoint/" + stationId + "/arrivals?app_key=" + APP_KEY;
         String arrivalsResponse = getCachedResponse(arrivalsEndpoint);
 
         return parseStationInfo(stationResponse, arrivalsResponse, stationName);
     }
 
-    // FIXED: Journey planning method with correct endpoint format
+    // FIXED: Correct endpoint format with lowercase and app_key
     public List<JourneyOption> planJourney(String fromStation, String toStation) throws IOException {
         String encodedFrom = URLEncoder.encode(fromStation.trim(), StandardCharsets.UTF_8);
         String encodedTo = URLEncoder.encode(toStation.trim(), StandardCharsets.UTF_8);
         
-        // FIXED: Correct endpoint format with proper case
-        String endpoint = API_BASE_URL + "/Journey/JourneyResults/" + encodedFrom + "/to/" + encodedTo;
+        // FIXED: Correct endpoint format with lowercase 'journey/journeyresults'
+        String endpoint = API_BASE_URL + "/journey/journeyresults/" + encodedFrom + "/to/" + encodedTo + "?app_key=" + APP_KEY;
+        
+        logger.debug("Journey planning endpoint: {}", endpoint);
+        
         String response = getCachedResponse(endpoint);
         return parseJourneyOptions(response);
     }
@@ -210,6 +214,7 @@ public class TFLService {
         throw new IOException("Failed after " + MAX_RETRIES + " attempts for endpoint: " + endpoint, lastException);
     }
 
+    // FIXED: Added proper User-Agent header
     private String getResponse(String endpoint) throws IOException {
         URL url = new URL(endpoint);
         HttpURLConnection conn = null;
@@ -220,7 +225,10 @@ public class TFLService {
             conn.setRequestMethod("GET");
             conn.setConnectTimeout(CONNECTION_TIMEOUT);
             conn.setReadTimeout(READ_TIMEOUT);
-            conn.setRequestProperty("User-Agent", "TFL-Bot/1.0");
+            
+            // CRITICAL: Add User-Agent header to prevent 403 errors
+            conn.setRequestProperty("User-Agent", "Mozilla/5.0 (compatible; TFL-Bot/1.0)");
+            conn.setRequestProperty("Accept", "application/json");
 
             int responseCode = conn.getResponseCode();
             
@@ -230,7 +238,7 @@ public class TFLService {
             } else if (responseCode == 429) {
                 throw new IOException("TFL API rate limit exceeded (429). Please try again later.");
             } else if (responseCode == 403) {
-                throw new IOException("TFL API access forbidden (403). Rate limiting or authentication issue.");
+                throw new IOException("TFL API access forbidden (403). Check User-Agent header and API credentials.");
             } else if (responseCode != 200) {
                 throw new IOException("TFL API returned status code: " + responseCode + " for endpoint: " + endpoint);
             }
@@ -242,6 +250,7 @@ public class TFLService {
                 response.append(scanner.nextLine());
             }
 
+            logger.debug("Successfully received response from: {}", endpoint);
             return response.toString();
 
         } finally {
@@ -558,7 +567,7 @@ public class TFLService {
         return new StationInfo(name, facilities, arrivals);
     }
 
-    // Data classes
+    // Data classes remain the same
     public static class DisruptionInfo {
         public final String lineName;
         public final int statusSeverity;
