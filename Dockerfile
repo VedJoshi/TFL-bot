@@ -1,20 +1,27 @@
 FROM openjdk:17-jdk-slim
 
+# Install Maven
+RUN apt-get update && \
+    apt-get install -y maven && \
+    rm -rf /var/lib/apt/lists/*
+
+# Set working directory
 WORKDIR /app
 
-# Copy Maven files for dependency caching
+# Copy pom.xml first for better caching
 COPY pom.xml .
-COPY src ./src
 
-# Install Maven
-RUN apt-get update && apt-get install -y maven && rm -rf /var/lib/apt/lists/*
+# Download dependencies
+RUN mvn dependency:go-offline -B
+
+# Copy source code
+COPY src ./src
 
 # Build the application
 RUN mvn clean package -DskipTests
 
-# Run the application
-CMD ["java", "-jar", "target/TFL-bot-1.0-SNAPSHOT.jar"]
+# Expose port (Render will set the PORT environment variable)
+EXPOSE $PORT
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-  CMD curl -f http://localhost:8080/health || exit 1
+# Run the application
+CMD ["java", "-jar", "target/UpdatedTFLBot-1.0-SNAPSHOT.jar"]

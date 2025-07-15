@@ -316,25 +316,31 @@ public class Bot extends TelegramLongPollingBot {
     public static void main(String[] args) throws TelegramApiException {
         logger.info("Starting TFL Bot...");
         
-        // Railway port configuration
-        String port = System.getenv("PORT");
+        // Multi-platform port configuration
+        String port = getPort();
         if (port != null) {
-            logger.info("Railway PORT detected: {}", port);
+            logger.info("Deployment PORT detected: {}", port);
+            // Start a simple health check server for platforms that require it
+            startHealthCheckServer(Integer.parseInt(port));
         }
         
-        // Log database connection for Railway debugging
+        // Database connection logging
         String dbUrl = System.getenv("DATABASE_URL");
         if (dbUrl != null) {
-            logger.info("Database connection configured for Railway");
+            logger.info("Database connection configured: {}", maskDbUrl(dbUrl));
         } else {
             logger.warn("DATABASE_URL not found - using default database settings");
         }
+        
+        // Log deployment platform
+        String platform = detectPlatform();
+        logger.info("Detected deployment platform: {}", platform);
         
         TelegramBotsApi botsApi = new TelegramBotsApi(DefaultBotSession.class);
         Bot bot = new Bot();
         botsApi.registerBot(bot);
         
-        logger.info("TFL Bot started successfully!");
+        logger.info("TFL Bot started successfully on {}!", platform);
         
         // Graceful shutdown
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
@@ -343,5 +349,66 @@ public class Bot extends TelegramLongPollingBot {
             DatabaseManager.getInstance().close();
             logger.info("Bot shutdown complete");
         }));
+    }
+    
+    private static String getPort() {
+        // Check various port environment variables used by different platforms
+        String port = System.getenv("PORT");           // Heroku, Render, Railway
+        if (port == null) port = System.getenv("HTTP_PORT");  // Some platforms
+        if (port == null) port = System.getenv("SERVER_PORT"); // Custom
+        return port;
+    }
+    
+    private static String detectPlatform() {
+        if (System.getenv("RENDER") != null) return "Render";
+        if (System.getenv("HEROKU_APP_NAME") != null) return "Heroku";
+        if (System.getenv("RAILWAY_ENVIRONMENT") != null) return "Railway";
+        if (System.getenv("VERCEL") != null) return "Vercel";
+        return "Local/Unknown";
+    }
+    
+    private static void startHealthCheckServer(int port) {
+        new Thread(() -> {
+            try {
+                com.sun.net.httpserver.HttpServer server = com.sun.net.httpserver.HttpServer.create(
+                    new java.net.InetSocketAddress(port), 0);
+                
+                server.createContext("/health", exchange -> {
+                    String response = "Bot is healthy";
+                    exchange.sendResponseHeaders(200, response.length());
+                    try (java.io.OutputStream os = exchange.getResponseBody()) {
+                        os.write(response.getBytes());
+                    }
+                });
+                
+                server.createContext("/", exchange -> {
+                    String response = "TFL Bot is running";
+                    exchange.sendResponseHeaders(200, response.length());
+                    try (java.io.OutputStream os = exchange.getResponseBody()) {
+                        os.write(response.getBytes());
+                    }
+                });
+                
+                server.setExecutor(null);
+                server.start();
+                logger.info("Health check server started on port {}", port);
+            } catch (Exception e) {
+                logger.error("Failed to start health check server", e);
+            }
+        }).start();
+    }
+    
+    private static String maskDbUrl(String dbUrl) {
+        // Mask password in database URL for logging
+        if (dbUrl.contains("@")) {
+            String[] parts = dbUrl.split("@");
+            if (parts[0].contains(":")) {
+                String[] userPass = parts[0].split(":");
+                if (userPass.length >= 3) {
+                    return userPass[0] + ":" + userPass[1] + ":****@" + parts[1];
+                }
+            }
+        }
+        return dbUrl.replaceAll("password=[^&\\s]+", "password=****");
     }
 }
