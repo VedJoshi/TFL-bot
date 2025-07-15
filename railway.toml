@@ -1,0 +1,14 @@
+[build]
+buildCommand = "mvn clean package -DskipTests"
+
+[deploy]
+startCommand = "java -jar target/TFL-bot-1.0-SNAPSHOT.jar"
+healthcheckPath = "/health"
+healthcheckTimeout = 300
+restartPolicyType = "always"
+
+[[services]]
+name = "tfl-bot"
+
+[[services]]
+name = "postgres"
