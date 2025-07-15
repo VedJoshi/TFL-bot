@@ -237,6 +237,13 @@ public class TFLService {
             this.reason = reason;
         }
 
+        /**
+         * Generate a unique identifier for this disruption based on line name, severity, and description
+         */
+        public String getId() {
+            return lineName + "|" + statusSeverity + "|" + description.hashCode();
+        }
+
         @Override
         public String toString() {
             return "🚨 *" + lineName + "*: " + description +

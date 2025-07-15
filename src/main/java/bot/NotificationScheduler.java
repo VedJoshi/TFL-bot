@@ -9,6 +9,7 @@ import java.time.DayOfWeek;
 import java.time.LocalTime;
 import java.util.List;
 import java.util.Set;
+import java.util.HashSet;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -21,6 +22,9 @@ public class NotificationScheduler {
     private final Bot bot;
     private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(2);
     
+    // Track known disruptions to detect new ones
+    private Set<String> knownDisruptions = new HashSet<>();
+    
     public NotificationScheduler(TFLService tflService, UserPreferencesService preferencesService, Bot bot) {
         this.tflService = tflService;
         this.preferencesService = preferencesService;
@@ -31,8 +35,8 @@ public class NotificationScheduler {
         // Check for scheduled notifications every minute
         scheduler.scheduleAtFixedRate(this::checkScheduledNotifications, 0, 1, TimeUnit.MINUTES);
         
-        // Check for disruptions every 5 minutes
-        scheduler.scheduleAtFixedRate(this::checkDisruptions, 0, 5, TimeUnit.MINUTES);
+        // Check for NEW disruptions every 2 minutes (reduced frequency, only for new disruptions)
+        scheduler.scheduleAtFixedRate(this::checkForNewDisruptions, 0, 2, TimeUnit.MINUTES);
         
         logger.info("Notification scheduler started");
     }
@@ -63,24 +67,52 @@ public class NotificationScheduler {
         }
     }
     
-    private void checkDisruptions() {
+    /**
+     * Check for disruptions only when user explicitly requests
+     */
+    public List<TFLService.DisruptionInfo> checkDisruptionsOnDemand() {
         try {
-            List<TFLService.DisruptionInfo> severeDisruptions = tflService.getSevereDisruptions();
+            return tflService.getSevereDisruptions();
+        } catch (Exception e) {
+            logger.error("Error checking disruptions on demand", e);
+            return List.of();
+        }
+    }
+    
+    /**
+     * Check for NEW disruptions only (not repeated notifications)
+     */
+    private void checkForNewDisruptions() {
+        try {
+            List<TFLService.DisruptionInfo> currentDisruptions = tflService.getSevereDisruptions();
+            List<TFLService.DisruptionInfo> newDisruptions = currentDisruptions.stream()
+                .filter(disruption -> !knownDisruptions.contains(disruption.getId()))
+                .toList();
             
-            if (!severeDisruptions.isEmpty()) {
+            if (!newDisruptions.isEmpty()) {
+                // Update known disruptions
+                newDisruptions.forEach(disruption -> knownDisruptions.add(disruption.getId()));
+                
                 List<Long> users = preferencesService.getUsersWithDisruptionAlerts();
-                logger.info("Found {} severe disruptions, notifying {} users", severeDisruptions.size(), users.size());
+                logger.info("Found {} NEW disruptions, notifying {} users", newDisruptions.size(), users.size());
                 
                 for (Long userId : users) {
                     try {
-                        sendDisruptionAlert(userId, severeDisruptions);
+                        sendDisruptionAlert(userId, newDisruptions);
                     } catch (Exception e) {
                         logger.error("Failed to send disruption alert to user {}", userId, e);
                     }
                 }
             }
+            
+            // Clean up resolved disruptions from tracking
+            Set<String> currentDisruptionIds = currentDisruptions.stream()
+                .map(TFLService.DisruptionInfo::getId)
+                .collect(java.util.stream.Collectors.toSet());
+            knownDisruptions.retainAll(currentDisruptionIds);
+            
         } catch (Exception e) {
-            logger.error("Error checking disruptions", e);
+            logger.error("Error checking for new disruptions", e);
         }
     }
     
