@@ -360,6 +360,7 @@ public class Bot extends TelegramLongPollingBot {
     }
     
     private static String detectPlatform() {
+        if (System.getenv("AWS_EXECUTION_ENV") != null || System.getenv("AWS_REGION") != null) return "AWS";
         if (System.getenv("RENDER") != null) return "Render";
         if (System.getenv("HEROKU_APP_NAME") != null) return "Heroku";
         if (System.getenv("RAILWAY_ENVIRONMENT") != null) return "Railway";
@@ -382,7 +383,16 @@ public class Bot extends TelegramLongPollingBot {
                 });
                 
                 server.createContext("/", exchange -> {
-                    String response = "TFL Bot is running";
+                    String response = "TFL Bot is running on " + detectPlatform();
+                    exchange.sendResponseHeaders(200, response.length());
+                    try (java.io.OutputStream os = exchange.getResponseBody()) {
+                        os.write(response.getBytes());
+                    }
+                });
+                
+                server.createContext("/status", exchange -> {
+                    String response = "{\"status\":\"running\",\"platform\":\"" + detectPlatform() + "\",\"timestamp\":\"" + java.time.Instant.now() + "\"}";
+                    exchange.getResponseHeaders().set("Content-Type", "application/json");
                     exchange.sendResponseHeaders(200, response.length());
                     try (java.io.OutputStream os = exchange.getResponseBody()) {
                         os.write(response.getBytes());
