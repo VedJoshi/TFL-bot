@@ -83,6 +83,16 @@ public class Bot extends TelegramLongPollingBot {
             showFavorites(chatId);
         } else if (callbackData.equals("settings")) {
             showSettings(chatId);
+        } else if (callbackData.equals("schedule_notifications")) {
+            showScheduleNotificationsMenu(chatId);
+        } else if (callbackData.equals("journey_planner")) {
+            showJourneyPlannerMenu(chatId);
+        } else if (callbackData.equals("station_info")) {
+            showStationInfoMenu(chatId);
+        } else if (callbackData.equals("service_updates")) {
+            showServiceUpdates(chatId);
+        } else if (callbackData.equals("check_disruptions")) {
+            checkDisruptionsOnDemand(chatId);
         } else if (callbackData.startsWith("add_fav_")) {
             String lineName = callbackData.substring(8);
             preferencesService.addFavoriteLine(userId, lineName);
@@ -112,9 +122,34 @@ public class Bot extends TelegramLongPollingBot {
                 .callbackData("line")
                 .build();
 
+        var journeyButton = InlineKeyboardButton.builder()
+                .text("🗺️ Journey Planner")
+                .callbackData("journey_planner")
+                .build();
+
+        var stationButton = InlineKeyboardButton.builder()
+                .text("🚉 Station Info")
+                .callbackData("station_info")
+                .build();
+
         var favoritesButton = InlineKeyboardButton.builder()
                 .text("⭐ Favorites")
                 .callbackData("favorites")
+                .build();
+
+        var scheduleButton = InlineKeyboardButton.builder()
+                .text("⏰ Schedule Alerts")
+                .callbackData("schedule_notifications")
+                .build();
+
+        var updatesButton = InlineKeyboardButton.builder()
+                .text("🔧 Service Updates")
+                .callbackData("service_updates")
+                .build();
+
+        var disruptionsButton = InlineKeyboardButton.builder()
+                .text("🚨 Check Disruptions")
+                .callbackData("check_disruptions")
                 .build();
 
         var settingsButton = InlineKeyboardButton.builder()
@@ -124,8 +159,121 @@ public class Bot extends TelegramLongPollingBot {
 
         return InlineKeyboardMarkup.builder()
                 .keyboardRow(List.of(overviewButton, lineButton))
-                .keyboardRow(List.of(favoritesButton, settingsButton))
+                .keyboardRow(List.of(journeyButton, stationButton))
+                .keyboardRow(List.of(favoritesButton, scheduleButton))
+                .keyboardRow(List.of(updatesButton, disruptionsButton))
+                .keyboardRow(List.of(settingsButton))
                 .build();
+    }
+
+    // New feature handlers
+    private void showScheduleNotificationsMenu(long chatId) {
+        Long userId = chatId;
+        UserPreferencesService.UserPreferences prefs = preferencesService.getUserPreferences(userId);
+        
+        StringBuilder message = new StringBuilder("⏰ *Scheduled Notifications*\n\n");
+        
+        if (prefs.getScheduledNotifications().isEmpty()) {
+            message.append("You don't have any scheduled notifications yet.\n\n");
+        } else {
+            message.append("Your current notifications:\n");
+            prefs.getScheduledNotifications().forEach((time, settings) -> {
+                message.append("• ").append(time).append(" - ");
+                if (settings.getLines().isEmpty()) {
+                    message.append("All lines");
+                } else {
+                    message.append(String.join(", ", settings.getLines()));
+                }
+                message.append("\n");
+            });
+            message.append("\n");
+        }
+        
+        message.append("Send a time in HH:MM format (e.g., 08:30) to add a notification, or use the buttons below:");
+
+        var addButton = InlineKeyboardButton.builder()
+                .text("➕ Add Notification")
+                .callbackData("add_schedule")
+                .build();
+
+        var removeButton = InlineKeyboardButton.builder()
+                .text("➖ Remove Notification")
+                .callbackData("remove_schedule")
+                .build();
+
+        InlineKeyboardMarkup keyboard = InlineKeyboardMarkup.builder()
+                .keyboardRow(List.of(addButton, removeButton))
+                .build();
+
+        sendMenu(chatId, message.toString(), keyboard);
+    }
+
+    private void showJourneyPlannerMenu(long chatId) {
+        sendText(chatId, "🗺️ *Journey Planner*\n\n" +
+                "Send your journey in this format:\n" +
+                "`from [station] to [station]`\n\n" +
+                "Example: `from King's Cross to Oxford Circus`\n\n" +
+                "I'll find the best route for you!");
+    }
+
+    private void showStationInfoMenu(long chatId) {
+        sendText(chatId, "🚉 *Station Information*\n\n" +
+                "Send a station name to get:\n" +
+                "• Live arrival times\n" +
+                "• Station facilities\n" +
+                "• Accessibility information\n\n" +
+                "Example: `King's Cross St. Pancras`");
+    }
+
+    private void showServiceUpdates(long chatId) {
+        try {
+            List<TFLService.ServiceUpdate> updates = tflApiService.getServiceUpdates();
+            
+            StringBuilder message = new StringBuilder("🔧 *Service Updates*\n\n");
+            
+            if (updates.isEmpty()) {
+                message.append("No major service updates or engineering works scheduled.");
+            } else {
+                for (TFLService.ServiceUpdate update : updates) {
+                    message.append(update.toString()).append("\n\n");
+                }
+            }
+
+            SendMessage sendMessage = new SendMessage();
+            sendMessage.setChatId(chatId);
+            sendMessage.setText(message.toString());
+            sendMessage.setParseMode("Markdown");
+            
+            execute(sendMessage);
+        } catch (Exception e) {
+            logger.error("Failed to get service updates", e);
+            sendText(chatId, "❌ Failed to retrieve service updates. Please try again.");
+        }
+    }
+
+    private void checkDisruptionsOnDemand(long chatId) {
+        List<TFLService.DisruptionInfo> disruptions = notificationScheduler.checkDisruptionsOnDemand();
+        
+        StringBuilder message = new StringBuilder("🚨 *Current Disruptions*\n\n");
+        
+        if (disruptions.isEmpty()) {
+            message.append("✅ No severe disruptions currently reported!");
+        } else {
+            for (TFLService.DisruptionInfo disruption : disruptions) {
+                message.append(disruption.toString()).append("\n\n");
+            }
+        }
+
+        SendMessage sendMessage = new SendMessage();
+        sendMessage.setChatId(chatId);
+        sendMessage.setText(message.toString());
+        sendMessage.setParseMode("Markdown");
+        
+        try {
+            execute(sendMessage);
+        } catch (TelegramApiException e) {
+            logger.error("Failed to send disruptions", e);
+        }
     }
 
     private void showFavorites(long chatId) {
