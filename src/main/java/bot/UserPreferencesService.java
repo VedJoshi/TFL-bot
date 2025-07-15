@@ -45,6 +45,14 @@ public class UserPreferencesService {
             this.onlyDisruptions = onlyDisruptions;
         }
         
+        /**
+         * Default constructor for all lines, all statuses
+         */
+        public NotificationSettings() {
+            this.lines = new HashSet<>();
+            this.onlyDisruptions = false;
+        }
+        
         public Set<String> getLines() { return new HashSet<>(lines); }
         public boolean isOnlyDisruptions() { return onlyDisruptions; }
     }
@@ -244,10 +252,10 @@ public class UserPreferencesService {
     }
 
     /**
-     * Simplified method for adding notification with just time (defaults to all lines, all statuses)
+     * Simplified method for adding notification with NotificationSettings object
      */
-    public void addScheduledNotification(Long userId, String time) {
-        addScheduledNotification(userId, time, new HashSet<>(), false);
+    public void addScheduledNotification(Long userId, String time, NotificationSettings settings) {
+        addScheduledNotification(userId, time, settings.getLines(), settings.isOnlyDisruptions());
     }
 
     /**

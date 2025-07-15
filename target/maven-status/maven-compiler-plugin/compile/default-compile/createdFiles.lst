@@ -1,3 +1,6 @@
+bot\TFLService$JourneyOption.class
+bot\TFLService$StationInfo.class
+bot\TFLService$ServiceUpdate.class
 bot\TFLService.class
 bot\TFLService$DisruptionInfo.class
 bot\Bot.class
