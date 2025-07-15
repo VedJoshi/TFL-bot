@@ -131,7 +131,7 @@ public class TFLService {
         String encodedTo = URLEncoder.encode(toStation.trim(), StandardCharsets.UTF_8);
         
         // FIXED: Correct endpoint format with PascalCase 'Journey/JourneyResults'
-        String endpoint = API_BASE_URL + "/Journey/JourneyResults/" + encodedFrom + "/to/" + encodedTo + "?app_key=" + APP_KEY;
+        String endpoint = API_BASE_URL + "/Journey/JourneyResults/" + encodedFrom + "/to/" + encodedTo;
         
         logger.debug("Journey planning endpoint: {}", endpoint);
         
