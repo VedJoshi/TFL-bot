@@ -636,10 +636,23 @@ public class Bot extends TelegramLongPollingBot {
             execute(sendMessage);
         } catch (IllegalArgumentException e) {
             logger.warn("Invalid journey request: {}", messageText, e);
-            sendText(chatId, "❌ " + e.getMessage() + "\n\nPlease check the station names and try again.");
-        } catch (Exception e) {
+            sendText(chatId, "❌ " + e.getMessage() + "\n\n💡 *Tips:*\n" +
+                    "• Use full station names (e.g., 'King's Cross St. Pancras')\n" +
+                    "• Check spelling carefully\n" +
+                    "• Try alternative station names if needed");
+        } catch (IOException e) {
             logger.error("Failed to get journey plan", e);
-            sendText(chatId, "❌ Failed to plan your journey. Please check station names and try again.\n\nTip: Try using full station names like 'King's Cross St. Pancras' or 'Oxford Circus'");
+            if (e.getMessage().contains("busy") || e.getMessage().contains("429")) {
+                sendText(chatId, "⏳ Service is busy right now. Please try again in a moment.");
+            } else {
+                sendText(chatId, "❌ Journey planning service unavailable. Please try again later.\n\n💡 *Tips:*\n" +
+                        "• Try using full station names\n" +
+                        "• Check that both stations exist\n" +
+                        "• Try again in a few moments");
+            }
+        } catch (Exception e) {
+            logger.error("Unexpected error in journey planning", e);
+            sendText(chatId, "❌ An unexpected error occurred. Please try again later.");
         }
     }
 
@@ -715,10 +728,21 @@ public class Bot extends TelegramLongPollingBot {
             execute(sendMessage);
         } catch (IllegalArgumentException e) {
             logger.warn("Station not found: {}", stationName, e);
-            sendText(chatId, "❌ Station '" + stationName + "' not found.\n\nPlease check the spelling and try again.\n\nTip: Try full names like 'King's Cross St. Pancras' or 'Leicester Square'");
-        } catch (Exception e) {
+            sendText(chatId, "❌ Station '" + stationName + "' not found.\n\n💡 *Tips:*\n" +
+                    "• Try the full station name (e.g., 'King's Cross St. Pancras')\n" +
+                    "• Check spelling carefully\n" +
+                    "• Try alternative names (e.g., 'Bank' or 'Bank-Monument')\n" +
+                    "• Some stations have different names on different lines");
+        } catch (IOException e) {
             logger.error("Failed to get station info for {}", stationName, e);
-            sendText(chatId, "❌ Failed to get information for '" + stationName + "'.\n\nPlease try again or check the station name.");
+            if (e.getMessage().contains("busy") || e.getMessage().contains("429")) {
+                sendText(chatId, "⏳ Service is busy right now. Please try again in a moment.");
+            } else {
+                sendText(chatId, "❌ Station information service unavailable.\n\nPlease try again later or check the station name.");
+            }
+        } catch (Exception e) {
+            logger.error("Unexpected error getting station info", e);
+            sendText(chatId, "❌ An unexpected error occurred. Please try again later.");
         }
     }
 
