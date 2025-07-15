@@ -125,13 +125,13 @@ public class TFLService {
         return parseStationInfo(stationResponse, arrivalsResponse, stationName);
     }
 
-    // FIXED: Correct endpoint format with lowercase and app_key
+    // FIXED: Correct endpoint format with PascalCase and app_key
     public List<JourneyOption> planJourney(String fromStation, String toStation) throws IOException {
         String encodedFrom = URLEncoder.encode(fromStation.trim(), StandardCharsets.UTF_8);
         String encodedTo = URLEncoder.encode(toStation.trim(), StandardCharsets.UTF_8);
         
-        // FIXED: Correct endpoint format with lowercase 'journey/journeyresults'
-        String endpoint = API_BASE_URL + "/journey/journeyresults/" + encodedFrom + "/to/" + encodedTo + "?app_key=" + APP_KEY;
+        // FIXED: Correct endpoint format with PascalCase 'Journey/JourneyResults'
+        String endpoint = API_BASE_URL + "/Journey/JourneyResults/" + encodedFrom + "/to/" + encodedTo + "?app_key=" + APP_KEY;
         
         logger.debug("Journey planning endpoint: {}", endpoint);
         
@@ -161,6 +161,13 @@ public class TFLService {
             
             return result.toString();
             
+        } catch (IllegalArgumentException e) {
+            // Handle disambiguation by trying to resolve automatically
+            if (e.getMessage().contains("ambiguous")) {
+                logger.info("Attempting to resolve ambiguous locations for {} to {}", fromStation, toStation);
+                return handleAmbiguousJourney(fromStation, toStation);
+            }
+            throw e;
         } catch (IOException e) {
             logger.error("Journey planning failed for {} to {}: {}", fromStation, toStation, e.getMessage());
             
@@ -173,6 +180,50 @@ public class TFLService {
                 throw new IOException("Journey planning service unavailable. Please try again later.");
             }
         }
+    }
+    
+    private String handleAmbiguousJourney(String fromStation, String toStation) throws IOException {
+        // Try with common station formats that are less ambiguous
+        String[] fromVariants = {
+            fromStation + " Station",
+            fromStation + " Underground Station",
+            fromStation + " Tube Station"
+        };
+        
+        String[] toVariants = {
+            toStation + " Station", 
+            toStation + " Underground Station",
+            toStation + " Tube Station"
+        };
+        
+        for (String fromVariant : fromVariants) {
+            for (String toVariant : toVariants) {
+                try {
+                    List<JourneyOption> options = planJourney(fromVariant, toVariant);
+                    if (!options.isEmpty()) {
+                        StringBuilder result = new StringBuilder();
+                        result.append("🗺️ *Journey Options:*\n\n");
+                        
+                        for (int i = 0; i < Math.min(3, options.size()); i++) {
+                            result.append("**Option ").append(i + 1).append(":**\n");
+                            result.append(options.get(i).toString()).append("\n");
+                        }
+                        
+                        return result.toString();
+                    }
+                } catch (Exception e) {
+                    // Continue trying other variants
+                    logger.debug("Failed variant: {} to {} - {}", fromVariant, toVariant, e.getMessage());
+                }
+            }
+        }
+        
+        return "❌ Could not find a clear journey between these locations.\n\n" +
+               "💡 *Tips:*\n" +
+               "• Try more specific station names (e.g., 'King's Cross St. Pancras')\n" +
+               "• Check spelling carefully\n" +
+               "• Try alternative station names\n" +
+               "• Some areas have multiple stations - specify which one";
     }
 
     private String getCachedResponse(String endpoint) throws IOException {
@@ -425,6 +476,12 @@ public class TFLService {
             String message = rootNode.path("message").asText();
             logger.warn("TFL API error response: {} - {}", statusCode, message);
             return options; // Return empty list for error responses
+        }
+        
+        // Handle disambiguation responses (multiple location matches)
+        if (rootNode.has("toLocationDisambiguation") || rootNode.has("fromLocationDisambiguation")) {
+            logger.warn("Journey planning returned disambiguation response - locations need to be more specific");
+            throw new IllegalArgumentException("Location names are ambiguous. Please use more specific station names or try alternative names.");
         }
         
         JsonNode journeysNode = rootNode.get("journeys");
