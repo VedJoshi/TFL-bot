@@ -132,13 +132,64 @@ public class TFLService {
         String cleanFrom = normalizeStationName(fromStation.trim());
         String cleanTo = normalizeStationName(toStation.trim());
         
-        // No app_key needed for Journey API
-        String endpoint = API_BASE_URL + "/Journey/JourneyResults/" + cleanFrom + "/to/" + cleanTo;
+        // Properly encode the station names for URL
+        String encodedFrom = URLEncoder.encode(cleanFrom, StandardCharsets.UTF_8)
+                .replace("+", "%20")  // Replace spaces with %20 instead of +
+                .replace(".", ""); // Remove periods
+                
+        String encodedTo = URLEncoder.encode(cleanTo, StandardCharsets.UTF_8)
+                .replace("+", "%20")
+                .replace(".", "");
+        
+        // Add specific journey planner parameters to reduce ambiguity
+        String endpoint = String.format("%s/Journey/JourneyResults/%s/to/%s?mode=tube&alternativeWalking=false&app_key=%s",
+                API_BASE_URL,
+                encodedFrom,
+                encodedTo,
+                APP_KEY);
         
         logger.debug("Journey planning endpoint: {}", endpoint);
         
+        try {
+            String response = getCachedResponse(endpoint);
+            return parseJourneyOptions(response);
+        } catch (IOException e) {
+            // If we get a 300 status, try with ICS codes
+            if (e.getMessage().contains("300")) {
+                logger.info("Attempting to resolve station codes for {} to {}", fromStation, toStation);
+                return tryJourneyWithStationCodes(fromStation, toStation);
+            }
+            throw e;
+        }
+    }
+
+    private List<JourneyOption> tryJourneyWithStationCodes(String fromStation, String toStation) throws IOException {
+        // Try to get station IDs first
+        String fromId = getStationId(fromStation);
+        String toId = getStationId(toStation);
+        
+        if (fromId == null || toId == null) {
+            return new ArrayList<>(); // Return empty list if we can't find station IDs
+        }
+        
+        // Use station IDs in the journey planning endpoint
+        String endpoint = String.format("%s/Journey/JourneyResults/%s/to/%s?mode=tube&alternativeWalking=false&app_key=%s",
+                API_BASE_URL,
+                fromId,
+                toId,
+                APP_KEY);
+                
         String response = getCachedResponse(endpoint);
         return parseJourneyOptions(response);
+    }
+
+    private String getStationId(String stationName) throws IOException {
+        String searchEndpoint = API_BASE_URL + "/StopPoint/Search?query=" + 
+            URLEncoder.encode(stationName, StandardCharsets.UTF_8) + 
+            "&modes=tube&app_key=" + APP_KEY;
+            
+        String response = getCachedResponse(searchEndpoint);
+        return parseStationId(response);
     }
 
     public String getJourneyPlan(String fromStation, String toStation) throws IOException {
