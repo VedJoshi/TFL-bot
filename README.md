@@ -12,18 +12,21 @@ TFLBot transforms the way London commuters access transport information by provi
 - **Live Status Updates**: Instant access to all London Underground line statuses
 - **Line-Specific Queries**: Detailed information for individual tube lines
 - **Service Disruption Alerts**: Proactive notifications about delays and closures
-- **Journey Planning**: Route optimization and travel time estimates
+- **Journey Planning**: Route optimization and travel time estimates with natural language input
+- **Station Information**: Live arrivals, facilities, and accessibility details
 
 ### Intelligent User Experience
 - **Personalized Favorites**: Save frequently used lines for quick access
-- **Scheduled Notifications**: Customizable alerts for commute times
-- **Smart Caching**: Sub-second response times through intelligent data management
-- **Intuitive Interface**: Context-aware inline keyboards and menu systems
+- **Scheduled Notifications**: Customizable alerts for commute times with time validation
+- **Smart Input Parsing**: Natural language journey planning (e.g., "from King's Cross to Oxford Circus")
+- **Context-Aware Interface**: State management for multi-step interactions
+- **Robust Error Handling**: Graceful fallbacks and user-friendly error messages
 
 ### Enterprise-Grade Reliability
-- **Graceful Error Handling**: Comprehensive fallback mechanisms
-- **Database Persistence**: Reliable user preference storage
-- **Health Monitoring**: Built-in status endpoints for monitoring
+- **Input Validation**: Comprehensive validation preventing invalid API calls
+- **API Error Prevention**: Smart filtering of callback data before API requests
+- **State Management**: Proper handling of user interaction states
+- **Graceful Degradation**: Fallback mechanisms for service failures
 
 ## Technical Architecture
 
@@ -109,12 +112,23 @@ TFLBot transforms the way London commuters access transport information by provi
 - **Error Tracking**: Comprehensive exception logging
 - **Performance Metrics**: Response time and cache hit rate monitoring
 
-
 ### Technical Decision Making
 - **Caching Strategy**: Balanced data freshness with API rate limits
 - **Database Design**: Optimized for read-heavy workloads with proper indexing
 - **Error Handling**: Implemented circuit breaker pattern for external API resilience
 - **User Experience**: Designed conversational interface based on user behavior analysis
+
+#### Advanced Error Handling
+- **Input Sanitization**: Prevents invalid TFL API calls through pre-validation
+- **State-Based Interaction**: Context-aware message handling for complex workflows
+- **API Call Optimization**: Smart caching and validation reduces unnecessary requests
+- **User Experience Continuity**: Graceful error recovery maintains conversation flow
+
+#### Robust Callback Management
+- **Command Validation**: Distinguishes between line IDs and system commands
+- **State Machine Pattern**: Manages multi-step user interactions reliably
+- **Fallback Handling**: Comprehensive error messages guide user corrections
+- **Input Format Validation**: Time format, station name, and journey format checking
 
 ## Operations
 
@@ -168,7 +182,8 @@ TFLBot transforms the way London commuters access transport information by provi
 
 3. **Build the application**
    ```bash
-   mvn clean package -DskipTests
+   mvn clean compile
+   mvn package -DskipTests
    ```
 
 4. **Run the bot**
@@ -187,6 +202,15 @@ TFLBot transforms the way London commuters access transport information by provi
    ```bash
    docker run -e BOT_TOKEN=your_token -e DATABASE_URL=your_db_url tfl-bot
    ```
+
+### Testing Features
+
+Once running, test these key features:
+
+1. **Journey Planning**: Send "from King's Cross to Oxford Circus"
+2. **Station Info**: Send any station name like "Liverpool Street"
+3. **Schedule Alerts**: Use the Schedule Alerts button and follow prompts
+4. **Line Status**: Use the menu to check individual lines
 
 ### Database Setup
 
