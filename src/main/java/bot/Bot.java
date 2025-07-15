@@ -24,9 +24,12 @@ public class Bot extends TelegramLongPollingBot {
     private final NotificationScheduler notificationScheduler;
 
     private boolean awaitingLineName = false;
+    private boolean awaitingJourneyInput = false;
+    private boolean awaitingStationInput = false;
+    private boolean awaitingScheduleTime = false;
 
     public Bot() {
-        super();
+        super("BOT_TOKEN"); // Fix deprecated constructor
         this.notificationScheduler = new NotificationScheduler(tflApiService, preferencesService, this);
         this.notificationScheduler.start();
         logger.info("Bot initialized successfully");
@@ -52,10 +55,22 @@ public class Bot extends TelegramLongPollingBot {
         if (update.hasMessage() && update.getMessage().hasText()) {
             String messageText = update.getMessage().getText();
             long chatId = update.getMessage().getChatId();
+            Long userId = update.getMessage().getFrom().getId();
 
-            if (awaitingLineName) {
+            if (awaitingJourneyInput) {
+                handleJourneyPlannerInput(chatId, messageText);
+                awaitingJourneyInput = false;
+            } else if (awaitingStationInput) {
+                handleStationInfoInput(chatId, messageText);
+                awaitingStationInput = false;
+            } else if (awaitingScheduleTime) {
+                handleScheduleTimeInput(chatId, userId, messageText);
+                awaitingScheduleTime = false;
+            } else if (awaitingLineName) {
                 handleLineSpecificRequest(chatId, messageText.toLowerCase());
                 awaitingLineName = false;
+            } else if (messageText.startsWith("from ") && messageText.contains(" to ")) {
+                handleJourneyPlannerInput(chatId, messageText);
             } else if (messageText.equals("/start")) {
                 sendMenu(chatId, "Welcome to the AbiTFLBot! 🚇\nChoose an option:", getMainMenu());
             } else if (messageText.equals("/favorites")) {
@@ -64,6 +79,9 @@ public class Bot extends TelegramLongPollingBot {
                 showSettings(chatId);
             } else if (messageText.equals("/help")) {
                 showHelp(chatId);
+            } else {
+                // Check if it's a station name
+                handleStationInfoInput(chatId, messageText);
             }
         } else if (update.hasCallbackQuery()) {
             String callbackData = update.getCallbackQuery().getData();
@@ -85,10 +103,21 @@ public class Bot extends TelegramLongPollingBot {
             showSettings(chatId);
         } else if (callbackData.equals("schedule_notifications")) {
             showScheduleNotificationsMenu(chatId);
+        } else if (callbackData.equals("add_schedule")) {
+            handleAddSchedule(chatId);
+        } else if (callbackData.equals("remove_schedule")) {
+            handleRemoveSchedule(chatId, userId);
+        } else if (callbackData.startsWith("remove_schedule_")) {
+            String timeToRemove = callbackData.substring(16); // Remove "remove_schedule_" prefix
+            preferencesService.removeScheduledNotification(userId, timeToRemove);
+            sendText(chatId, "✅ Removed notification for " + timeToRemove);
+            showScheduleNotificationsMenu(chatId); // Refresh the menu
         } else if (callbackData.equals("journey_planner")) {
             showJourneyPlannerMenu(chatId);
+            awaitingJourneyInput = true;
         } else if (callbackData.equals("station_info")) {
             showStationInfoMenu(chatId);
+            awaitingStationInput = true;
         } else if (callbackData.equals("service_updates")) {
             showServiceUpdates(chatId);
         } else if (callbackData.equals("check_disruptions")) {
@@ -106,8 +135,10 @@ public class Bot extends TelegramLongPollingBot {
             boolean newState = !prefs.isDisruptionAlertsEnabled();
             preferencesService.setDisruptionAlerts(userId, newState);
             sendText(chatId, "🔔 Disruption alerts " + (newState ? "enabled" : "disabled"));
-        } else {
+        } else if (isValidLineId(callbackData)) {
             handleLineSpecificRequest(chatId, callbackData);
+        } else {
+            sendText(chatId, "❌ Unknown command. Please use the menu options.");
         }
     }
 
@@ -178,7 +209,7 @@ public class Bot extends TelegramLongPollingBot {
         } else {
             message.append("Your current notifications:\n");
             prefs.getScheduledNotifications().forEach((time, settings) -> {
-                message.append("• ").append(time).append(" - ");
+                message.append("• ").append(time.toString()).append(" - ");
                 if (settings.getLines().isEmpty()) {
                     message.append("All lines");
                 } else {
@@ -213,7 +244,8 @@ public class Bot extends TelegramLongPollingBot {
                 "Send your journey in this format:\n" +
                 "`from [station] to [station]`\n\n" +
                 "Example: `from King's Cross to Oxford Circus`\n\n" +
-                "I'll find the best route for you!");
+                "I'll find the best route for you!\n\n" +
+                "💡 *Tip*: You can also just type station names without 'from' and 'to'");
     }
 
     private void showStationInfoMenu(long chatId) {
@@ -222,7 +254,8 @@ public class Bot extends TelegramLongPollingBot {
                 "• Live arrival times\n" +
                 "• Station facilities\n" +
                 "• Accessibility information\n\n" +
-                "Example: `King's Cross St. Pancras`");
+                "Example: `King's Cross St. Pancras`\n\n" +
+                "💡 *Tip*: Just type the station name!");
     }
 
     private void showServiceUpdates(long chatId) {
@@ -569,4 +602,150 @@ public class Bot extends TelegramLongPollingBot {
         }
         return dbUrl.replaceAll("password=[^&\\s]+", "password=****");
     }
+
+    private void handleJourneyPlannerInput(long chatId, String messageText) {
+        try {
+            String from, to;
+            
+            if (messageText.toLowerCase().startsWith("from ") && messageText.toLowerCase().contains(" to ")) {
+                // Parse "from X to Y" format
+                String[] parts = messageText.toLowerCase().split(" to ");
+                from = parts[0].substring(5).trim(); // Remove "from "
+                to = parts[1].trim();
+            } else if (messageText.toLowerCase().contains(" to ")) {
+                // Parse "X to Y" format
+                String[] parts = messageText.toLowerCase().split(" to ");
+                from = parts[0].trim();
+                to = parts[1].trim();
+            } else {
+                sendText(chatId, "❌ Please use the format: 'from [station] to [station]'\nExample: from King's Cross to Oxford Circus\n\nOr simply: King's Cross to Oxford Circus");
+                return;
+            }
+
+            // Capitalize station names for better display
+            from = capitalizeWords(from);
+            to = capitalizeWords(to);
+
+            String journeyInfo = tflApiService.getJourneyPlan(from, to);
+            
+            SendMessage sendMessage = new SendMessage();
+            sendMessage.setChatId(chatId);
+            sendMessage.setText("🗺️ *Journey from " + from + " to " + to + "*\n\n" + journeyInfo);
+            sendMessage.setParseMode("Markdown");
+            
+            execute(sendMessage);
+        } catch (IllegalArgumentException e) {
+            logger.warn("Invalid journey request: {}", messageText, e);
+            sendText(chatId, "❌ " + e.getMessage() + "\n\nPlease check the station names and try again.");
+        } catch (Exception e) {
+            logger.error("Failed to get journey plan", e);
+            sendText(chatId, "❌ Failed to plan your journey. Please check station names and try again.\n\nTip: Try using full station names like 'King's Cross St. Pancras' or 'Oxford Circus'");
+        }
+    }
+
+    private void handleScheduleTimeInput(long chatId, Long userId, String timeText) {
+        if (!preferencesService.isValidTime(timeText)) {
+            sendText(chatId, "❌ Invalid time format. Please use HH:MM (24-hour format).\nExample: 08:30 or 17:45");
+            return;
+        }
+
+        try {
+            preferencesService.addScheduledNotification(userId, timeText, new UserPreferencesService.NotificationSettings());
+            sendText(chatId, "✅ Added notification for " + timeText + " (all lines, all statuses)\n\nUse settings to customize specific lines.");
+            showScheduleNotificationsMenu(chatId);
+        } catch (Exception e) {
+            logger.error("Failed to add scheduled notification", e);
+            sendText(chatId, "❌ Failed to add notification. Please try again.");
+        }
+    }
+
+    private void handleAddSchedule(long chatId) {
+        awaitingScheduleTime = true;
+        sendText(chatId, "⏰ *Add Scheduled Notification*\n\n" +
+                "Please send the time when you want to receive notifications.\n\n" +
+                "Format: HH:MM (24-hour format)\n" +
+                "Examples: 08:30, 17:45, 23:00\n\n" +
+                "This will notify you of all line statuses at the specified time.");
+    }
+
+    private void handleRemoveSchedule(long chatId, Long userId) {
+        UserPreferencesService.UserPreferences prefs = preferencesService.getUserPreferences(userId);
+        
+        if (prefs.getScheduledNotifications().isEmpty()) {
+            sendText(chatId, "❌ You don't have any scheduled notifications to remove.");
+            return;
+        }
+
+        List<List<InlineKeyboardButton>> buttons = new ArrayList<>();
+        
+        prefs.getScheduledNotifications().keySet().forEach(time -> {
+            var button = InlineKeyboardButton.builder()
+                    .text("🗑️ " + time.toString())
+                    .callbackData("remove_schedule_" + time.toString())
+                    .build();
+            buttons.add(List.of(button));
+        });
+
+        InlineKeyboardMarkup keyboard = InlineKeyboardMarkup.builder()
+                .keyboard(buttons)
+                .build();
+
+        sendMenu(chatId, "Select a notification time to remove:", keyboard);
+    }
+
+    private boolean isValidLineId(String lineId) {
+        Set<String> validLines = Set.of(
+            "bakerloo", "central", "circle", "district", "hammersmith-city",
+            "jubilee", "metropolitan", "northern", "piccadilly", "victoria",
+            "waterloo-city", "elizabeth", "london-overground", "dlr"
+        );
+        return validLines.contains(lineId.toLowerCase());
+    }
+
+    private void handleStationInfoInput(long chatId, String stationName) {
+        try {
+            String capitalizedStationName = capitalizeWords(stationName.trim());
+            TFLService.StationInfo stationInfo = tflApiService.getStationInfo(capitalizedStationName);
+            
+            SendMessage sendMessage = new SendMessage();
+            sendMessage.setChatId(chatId);
+            sendMessage.setText("🚉 *" + capitalizedStationName + " Station*\n\n" + stationInfo.toString());
+            sendMessage.setParseMode("Markdown");
+            
+            execute(sendMessage);
+        } catch (IllegalArgumentException e) {
+            logger.warn("Station not found: {}", stationName, e);
+            sendText(chatId, "❌ Station '" + stationName + "' not found.\n\nPlease check the spelling and try again.\n\nTip: Try full names like 'King's Cross St. Pancras' or 'Leicester Square'");
+        } catch (Exception e) {
+            logger.error("Failed to get station info for {}", stationName, e);
+            sendText(chatId, "❌ Failed to get information for '" + stationName + "'.\n\nPlease try again or check the station name.");
+        }
+    }
+
+    private String capitalizeWords(String text) {
+        if (text == null || text.isEmpty()) {
+            return text;
+        }
+        
+        String[] words = text.toLowerCase().split("\\s+");
+        StringBuilder result = new StringBuilder();
+        
+        for (int i = 0; i < words.length; i++) {
+            if (i > 0) {
+                result.append(" ");
+            }
+            
+            String word = words[i];
+            if (word.length() > 0) {
+                result.append(Character.toUpperCase(word.charAt(0)));
+                if (word.length() > 1) {
+                    result.append(word.substring(1));
+                }
+            }
+        }
+        
+        return result.toString();
+    }
+
+    // ...existing code...
 }
