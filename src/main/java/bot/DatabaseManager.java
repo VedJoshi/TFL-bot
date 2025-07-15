@@ -27,6 +27,7 @@ public class DatabaseManager {
         }
         
         config.setJdbcUrl(databaseUrl);
+        config.setDriverClassName("org.postgresql.Driver");
         config.setMaximumPoolSize(10);
         config.setMinimumIdle(2);
         config.setConnectionTimeout(30000);
