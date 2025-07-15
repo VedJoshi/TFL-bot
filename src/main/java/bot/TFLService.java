@@ -125,13 +125,15 @@ public class TFLService {
         return parseStationInfo(stationResponse, arrivalsResponse, stationName);
     }
 
-    // FIXED: Correct endpoint format with PascalCase and app_key
+    // FIXED: Complete Journey planning methods without app_key and comprehensive station mappings
+
     public List<JourneyOption> planJourney(String fromStation, String toStation) throws IOException {
-        String encodedFrom = URLEncoder.encode(fromStation.trim(), StandardCharsets.UTF_8);
-        String encodedTo = URLEncoder.encode(toStation.trim(), StandardCharsets.UTF_8);
+        // Clean and normalize station names
+        String cleanFrom = normalizeStationName(fromStation.trim());
+        String cleanTo = normalizeStationName(toStation.trim());
         
-        // FIXED: Correct endpoint format with PascalCase 'Journey/JourneyResults'
-        String endpoint = API_BASE_URL + "/Journey/JourneyResults/" + encodedFrom + "/to/" + encodedTo;
+        // No app_key needed for Journey API
+        String endpoint = API_BASE_URL + "/Journey/JourneyResults/" + cleanFrom + "/to/" + cleanTo;
         
         logger.debug("Journey planning endpoint: {}", endpoint);
         
@@ -145,10 +147,10 @@ public class TFLService {
             
             if (options.isEmpty()) {
                 return "❌ No journey options found. Please check station names.\n\n" +
-                       "💡 *Tips:*\n" +
-                       "• Try full station names (e.g., 'King's Cross St. Pancras')\n" +
-                       "• Check spelling of station names\n" +
-                       "• Some stations have multiple names";
+                    "💡 *Tips:*\n" +
+                    "• Try simplified station names (e.g., 'Kings Cross' instead of 'King's Cross St. Pancras')\n" +
+                    "• Check spelling of station names\n" +
+                    "• Some stations have multiple names - try alternatives";
             }
             
             StringBuilder result = new StringBuilder();
@@ -162,10 +164,10 @@ public class TFLService {
             return result.toString();
             
         } catch (IllegalArgumentException e) {
-            // Handle disambiguation by trying to resolve automatically
-            if (e.getMessage().contains("ambiguous")) {
-                logger.info("Attempting to resolve ambiguous locations for {} to {}", fromStation, toStation);
-                return handleAmbiguousJourney(fromStation, toStation);
+            // Handle disambiguation by trying simplified names
+            if (e.getMessage().contains("ambiguous") || e.getMessage().contains("404")) {
+                logger.info("Attempting to resolve with simplified names for {} to {}", fromStation, toStation);
+                return handleSimplifiedJourney(fromStation, toStation);
             }
             throw e;
         } catch (IOException e) {
@@ -173,7 +175,7 @@ public class TFLService {
             
             // Provide helpful error message based on the type of error
             if (e.getMessage().contains("404")) {
-                throw new IllegalArgumentException("One or both stations not found. Please check station names and try again.");
+                return handleSimplifiedJourney(fromStation, toStation);
             } else if (e.getMessage().contains("429")) {
                 throw new IOException("Service temporarily busy. Please try again in a moment.");
             } else {
@@ -181,49 +183,321 @@ public class TFLService {
             }
         }
     }
-    
-    private String handleAmbiguousJourney(String fromStation, String toStation) throws IOException {
-        // Try with common station formats that are less ambiguous
-        String[] fromVariants = {
-            fromStation + " Station",
-            fromStation + " Underground Station",
-            fromStation + " Tube Station"
-        };
-        
-        String[] toVariants = {
-            toStation + " Station", 
-            toStation + " Underground Station",
-            toStation + " Tube Station"
-        };
-        
-        for (String fromVariant : fromVariants) {
-            for (String toVariant : toVariants) {
-                try {
-                    List<JourneyOption> options = planJourney(fromVariant, toVariant);
-                    if (!options.isEmpty()) {
-                        StringBuilder result = new StringBuilder();
-                        result.append("🗺️ *Journey Options:*\n\n");
-                        
-                        for (int i = 0; i < Math.min(3, options.size()); i++) {
-                            result.append("**Option ").append(i + 1).append(":**\n");
-                            result.append(options.get(i).toString()).append("\n");
-                        }
-                        
-                        return result.toString();
-                    }
-                } catch (Exception e) {
-                    // Continue trying other variants
-                    logger.debug("Failed variant: {} to {} - {}", fromVariant, toVariant, e.getMessage());
-                }
-            }
+
+    private String normalizeStationName(String stationName) {
+        if (stationName == null || stationName.isEmpty()) {
+            return stationName;
         }
         
-        return "❌ Could not find a clear journey between these locations.\n\n" +
-               "💡 *Tips:*\n" +
-               "• Try more specific station names (e.g., 'King's Cross St. Pancras')\n" +
-               "• Check spelling carefully\n" +
-               "• Try alternative station names\n" +
-               "• Some areas have multiple stations - specify which one";
+        // Remove extra spaces and normalize
+        String normalized = stationName.trim().replaceAll("\\s+", " ");
+        
+        // Comprehensive station name mappings - covers all major London stations
+        Map<String, String> stationMappings = new HashMap<>();
+        // Major interchange stations
+        stationMappings.put("King's Cross St. Pancras", "Kings Cross");
+        stationMappings.put("King's Cross", "Kings Cross");
+        stationMappings.put("St. Pancras", "Kings Cross");
+        stationMappings.put("Liverpool Street", "Liverpool St");
+        stationMappings.put("London Bridge", "London Bridge");
+        stationMappings.put("Waterloo", "Waterloo");
+        stationMappings.put("Victoria", "Victoria");
+        stationMappings.put("Paddington", "Paddington");
+        stationMappings.put("Euston", "Euston");
+        stationMappings.put("Marylebone", "Marylebone");
+        stationMappings.put("Charing Cross", "Charing Cross");
+        // Central London stations
+        stationMappings.put("Oxford Circus", "Oxford Circus");
+        stationMappings.put("Bond Street", "Bond St");
+        stationMappings.put("Tottenham Court Road", "Tottenham Court Rd");
+        stationMappings.put("Leicester Square", "Leicester Sq");
+        stationMappings.put("Covent Garden", "Covent Garden");
+        stationMappings.put("Holborn", "Holborn");
+        stationMappings.put("Russell Square", "Russell Sq");
+        stationMappings.put("Goodge Street", "Goodge St");
+        stationMappings.put("Warren Street", "Warren St");
+        stationMappings.put("Great Portland Street", "Great Portland St");
+        stationMappings.put("Baker Street", "Baker St");
+        stationMappings.put("Regent's Park", "Regents Park");
+        stationMappings.put("Camden Town", "Camden Town");
+        stationMappings.put("Mornington Crescent", "Mornington Crescent");
+        // City and East
+        stationMappings.put("Bank", "Bank");
+        stationMappings.put("Monument", "Monument");
+        stationMappings.put("Bank-Monument", "Bank");
+        stationMappings.put("Moorgate", "Moorgate");
+        stationMappings.put("Old Street", "Old St");
+        stationMappings.put("Angel", "Angel");
+        stationMappings.put("Barbican", "Barbican");
+        stationMappings.put("Farringdon", "Farringdon");
+        stationMappings.put("Chancery Lane", "Chancery Lane");
+        stationMappings.put("St. Paul's", "St Pauls");
+        stationMappings.put("Mansion House", "Mansion House");
+        stationMappings.put("Cannon Street", "Cannon St");
+        stationMappings.put("Tower Hill", "Tower Hill");
+        stationMappings.put("Tower Gateway", "Tower Gateway");
+        stationMappings.put("Aldgate", "Aldgate");
+        stationMappings.put("Aldgate East", "Aldgate East");
+        stationMappings.put("Whitechapel", "Whitechapel");
+        stationMappings.put("Bethnal Green", "Bethnal Green");
+        stationMappings.put("Mile End", "Mile End");
+        stationMappings.put("Stratford", "Stratford");
+        stationMappings.put("Canary Wharf", "Canary Wharf");
+        // West London
+        stationMappings.put("Notting Hill Gate", "Notting Hill Gate");
+        stationMappings.put("Bayswater", "Bayswater");
+        stationMappings.put("Marble Arch", "Marble Arch");
+        stationMappings.put("Hyde Park Corner", "Hyde Park Corner");
+        stationMappings.put("Green Park", "Green Park");
+        stationMappings.put("Piccadilly Circus", "Piccadilly Circus");
+        stationMappings.put("Knightsbridge", "Knightsbridge");
+        stationMappings.put("South Kensington", "South Kensington");
+        stationMappings.put("Gloucester Road", "Gloucester Rd");
+        stationMappings.put("Earl's Court", "Earls Court");
+        stationMappings.put("Hammersmith", "Hammersmith");
+        stationMappings.put("Shepherd's Bush", "Shepherds Bush");
+        stationMappings.put("White City", "White City");
+        stationMappings.put("Wood Lane", "Wood Lane");
+        stationMappings.put("Westfield", "Shepherds Bush");
+        // North London
+        stationMappings.put("Finsbury Park", "Finsbury Park");
+        stationMappings.put("Arsenal", "Arsenal");
+        stationMappings.put("Holloway Road", "Holloway Rd");
+        stationMappings.put("Caledonian Road", "Caledonian Rd");
+        stationMappings.put("Kentish Town", "Kentish Town");
+        stationMappings.put("Chalk Farm", "Chalk Farm");
+        stationMappings.put("Belsize Park", "Belsize Park");
+        stationMappings.put("Hampstead", "Hampstead");
+        stationMappings.put("Golders Green", "Golders Green");
+        stationMappings.put("Brent Cross", "Brent Cross");
+        stationMappings.put("Hendon Central", "Hendon Central");
+        stationMappings.put("Edgware", "Edgware");
+        stationMappings.put("High Barnet", "High Barnet");
+        stationMappings.put("Cockfosters", "Cockfosters");
+        stationMappings.put("Arnos Grove", "Arnos Grove");
+        stationMappings.put("Bounds Green", "Bounds Green");
+        stationMappings.put("Wood Green", "Wood Green");
+        stationMappings.put("Turnpike Lane", "Turnpike Lane");
+        stationMappings.put("Manor House", "Manor House");
+        // South London
+        stationMappings.put("Elephant & Castle", "Elephant Castle");
+        stationMappings.put("Elephant and Castle", "Elephant Castle");
+        stationMappings.put("Borough", "Borough");
+        stationMappings.put("London Bridge", "London Bridge");
+        stationMappings.put("Bermondsey", "Bermondsey");
+        stationMappings.put("Canada Water", "Canada Water");
+        stationMappings.put("Surrey Quays", "Surrey Quays");
+        stationMappings.put("New Cross", "New Cross");
+        stationMappings.put("New Cross Gate", "New Cross Gate");
+        stationMappings.put("Deptford Bridge", "Deptford Bridge");
+        stationMappings.put("Greenwich", "Greenwich");
+        stationMappings.put("Cutty Sark", "Cutty Sark");
+        stationMappings.put("Island Gardens", "Island Gardens");
+        stationMappings.put("Mudchute", "Mudchute");
+        stationMappings.put("South Quay", "South Quay");
+        stationMappings.put("Crossharbour", "Crossharbour");
+        stationMappings.put("Heron Quays", "Heron Quays");
+        stationMappings.put("West India Quay", "West India Quay");
+        // Outer London - North East
+        stationMappings.put("Buckhurst Hill", "Buckhursthill");
+        stationMappings.put("Loughton", "Loughton");
+        stationMappings.put("Debden", "Debden");
+        stationMappings.put("Theydon Bois", "Theydon Bois");
+        stationMappings.put("Epping", "Epping");
+        stationMappings.put("Woodford", "Woodford");
+        stationMappings.put("South Woodford", "South Woodford");
+        stationMappings.put("Snaresbrook", "Snaresbrook");
+        stationMappings.put("Leytonstone", "Leytonstone");
+        stationMappings.put("Leyton", "Leyton");
+        stationMappings.put("Walthamstow Central", "Walthamstow Central");
+        stationMappings.put("Blackhorse Road", "Blackhorse Rd");
+        stationMappings.put("Tottenham Hale", "Tottenham Hale");
+        stationMappings.put("Seven Sisters", "Seven Sisters");
+        // Outer London - West
+        stationMappings.put("Heathrow Terminal 1", "Heathrow Terminal 1");
+        stationMappings.put("Heathrow Terminal 2", "Heathrow Terminal 2");
+        stationMappings.put("Heathrow Terminal 3", "Heathrow Terminal 3");
+        stationMappings.put("Heathrow Terminal 4", "Heathrow Terminal 4");
+        stationMappings.put("Heathrow Terminal 5", "Heathrow Terminal 5");
+        stationMappings.put("Hatton Cross", "Hatton Cross");
+        stationMappings.put("Hounslow East", "Hounslow East");
+        stationMappings.put("Hounslow Central", "Hounslow Central");
+        stationMappings.put("Hounslow West", "Hounslow West");
+        stationMappings.put("Osterley", "Osterley");
+        stationMappings.put("Boston Manor", "Boston Manor");
+        stationMappings.put("Northfields", "Northfields");
+        stationMappings.put("South Ealing", "South Ealing");
+        stationMappings.put("Ealing Common", "Ealing Common");
+        stationMappings.put("Ealing Broadway", "Ealing Broadway");
+        stationMappings.put("West Ealing", "West Ealing");
+        stationMappings.put("Hanwell", "Hanwell");
+        stationMappings.put("Southall", "Southall");
+        stationMappings.put("Hayes & Harlington", "Hayes Harlington");
+        // Outer London - South
+        stationMappings.put("Morden", "Morden");
+        stationMappings.put("South Wimbledon", "South Wimbledon");
+        stationMappings.put("Colliers Wood", "Colliers Wood");
+        stationMappings.put("Tooting Broadway", "Tooting Broadway");
+        stationMappings.put("Tooting Bec", "Tooting Bec");
+        stationMappings.put("Balham", "Balham");
+        stationMappings.put("Clapham South", "Clapham South");
+        stationMappings.put("Clapham Common", "Clapham Common");
+        stationMappings.put("Clapham North", "Clapham North");
+        stationMappings.put("Stockwell", "Stockwell");
+        stationMappings.put("Oval", "Oval");
+        stationMappings.put("Kennington", "Kennington");
+        stationMappings.put("Lambeth North", "Lambeth North");
+        stationMappings.put("Southwark", "Southwark");
+        stationMappings.put("Waterloo East", "Waterloo East");
+        // Metropolitan Line extensions
+        stationMappings.put("Amersham", "Amersham");
+        stationMappings.put("Chalfont & Latimer", "Chalfont Latimer");
+        stationMappings.put("Chorleywood", "Chorleywood");
+        stationMappings.put("Rickmansworth", "Rickmansworth");
+        stationMappings.put("Moor Park", "Moor Park");
+        stationMappings.put("Northwood", "Northwood");
+        stationMappings.put("Northwood Hills", "Northwood Hills");
+        stationMappings.put("Pinner", "Pinner");
+        stationMappings.put("North Harrow", "North Harrow");
+        stationMappings.put("Harrow-on-the-Hill", "Harrow-on-the-Hill");
+        stationMappings.put("West Harrow", "West Harrow");
+        stationMappings.put("Rayners Lane", "Rayners Lane");
+        stationMappings.put("Eastcote", "Eastcote");
+        stationMappings.put("Ruislip Manor", "Ruislip Manor");
+        stationMappings.put("Ruislip", "Ruislip");
+        stationMappings.put("Ickenham", "Ickenham");
+        stationMappings.put("Hillingdon", "Hillingdon");
+        stationMappings.put("Uxbridge", "Uxbridge");
+        // District Line extensions
+        stationMappings.put("Upminster", "Upminster");
+        stationMappings.put("Upminster Bridge", "Upminster Bridge");
+        stationMappings.put("Hornchurch", "Hornchurch");
+        stationMappings.put("Elm Park", "Elm Park");
+        stationMappings.put("Dagenham Heathway", "Dagenham Heathway");
+        stationMappings.put("Dagenham East", "Dagenham East");
+        stationMappings.put("Becontree", "Becontree");
+        stationMappings.put("Upney", "Upney");
+        stationMappings.put("Barking", "Barking");
+        stationMappings.put("East Ham", "East Ham");
+        stationMappings.put("Upton Park", "Upton Park");
+        stationMappings.put("Plaistow", "Plaistow");
+        stationMappings.put("West Ham", "West Ham");
+        stationMappings.put("Bromley-by-Bow", "Bromley-by-Bow");
+        stationMappings.put("Bow Road", "Bow Rd");
+        stationMappings.put("Bow Church", "Bow Church");
+        // Elizabeth Line (Crossrail)
+        stationMappings.put("Reading", "Reading");
+        stationMappings.put("Slough", "Slough");
+        stationMappings.put("Langley", "Langley");
+        stationMappings.put("Iver", "Iver");
+        stationMappings.put("West Drayton", "West Drayton");
+        stationMappings.put("Hayes & Harlington", "Hayes Harlington");
+        stationMappings.put("Southall", "Southall");
+        stationMappings.put("Hanwell", "Hanwell");
+        stationMappings.put("West Ealing", "West Ealing");
+        stationMappings.put("Ealing Broadway", "Ealing Broadway");
+        stationMappings.put("Acton Main Line", "Acton Main Line");
+        stationMappings.put("Bond Street", "Bond St");
+        stationMappings.put("Tottenham Court Road", "Tottenham Court Rd");
+        stationMappings.put("Farringdon", "Farringdon");
+        stationMappings.put("Liverpool Street", "Liverpool St");
+        stationMappings.put("Whitechapel", "Whitechapel");
+        stationMappings.put("Canary Wharf", "Canary Wharf");
+        stationMappings.put("Woolwich", "Woolwich");
+        stationMappings.put("Abbey Wood", "Abbey Wood");
+        stationMappings.put("Shenfield", "Shenfield");
+        stationMappings.put("Brentwood", "Brentwood");
+        stationMappings.put("Harold Wood", "Harold Wood");
+        stationMappings.put("Gidea Park", "Gidea Park");
+        stationMappings.put("Romford", "Romford");
+        stationMappings.put("Chadwell Heath", "Chadwell Heath");
+        stationMappings.put("Goodmayes", "Goodmayes");
+        stationMappings.put("Seven Kings", "Seven Kings");
+        stationMappings.put("Ilford", "Ilford");
+        stationMappings.put("Manor Park", "Manor Park");
+        stationMappings.put("Forest Gate", "Forest Gate");
+        stationMappings.put("Maryland", "Maryland");
+        stationMappings.put("Stratford", "Stratford");
+        // Common variations and abbreviations
+        stationMappings.put("St.", "St");
+        stationMappings.put("Rd.", "Rd");
+        stationMappings.put("Ave.", "Ave");
+        stationMappings.put("&", "");
+        stationMappings.put(" and ", " ");
+        
+        // Check for exact matches first
+        String mapped = stationMappings.get(normalized);
+        if (mapped != null) {
+            return mapped;
+        }
+        
+        // Remove common suffixes that might cause issues
+        normalized = normalized
+            .replace(" Station", "")
+            .replace(" Underground", "")
+            .replace(" Tube", "")
+            .replace("'", "")  // Remove apostrophes
+            .replace(".", "")  // Remove periods
+            .replace("-", "")  // Remove hyphens for URL compatibility
+            .replaceAll("\\s+", ""); // Remove all spaces for API compatibility
+        
+        return normalized;
+    }
+
+    private String handleSimplifiedJourney(String fromStation, String toStation) throws IOException {
+        // Try with heavily simplified station names
+        String simplifiedFrom = simplifyStationName(fromStation);
+        String simplifiedTo = simplifyStationName(toStation);
+        
+        logger.info("Trying simplified journey: {} to {}", simplifiedFrom, simplifiedTo);
+        
+        try {
+            List<JourneyOption> options = planJourney(simplifiedFrom, simplifiedTo);
+            if (!options.isEmpty()) {
+                StringBuilder result = new StringBuilder();
+                result.append("🗺️ *Journey Options:*\n");
+                result.append("*(Using simplified station names)*\n\n");
+                
+                for (int i = 0; i < Math.min(3, options.size()); i++) {
+                    result.append("**Option ").append(i + 1).append(":**\n");
+                    result.append(options.get(i).toString()).append("\n");
+                }
+                
+                return result.toString();
+            }
+        } catch (Exception e) {
+            logger.debug("Simplified journey also failed: {} to {} - {}", simplifiedFrom, simplifiedTo, e.getMessage());
+        }
+        
+        return "❌ Could not find a journey between these locations.\n\n" +
+            "💡 *Try these alternatives:*\n" +
+            "• Use simpler station names (e.g., 'Kings Cross', 'Liverpool St')\n" +
+            "• Check spelling carefully\n" +
+            "• Try nearby stations\n" +
+            "• Some areas have multiple stations - try different ones\n\n" +
+            "*Example formats that work well:*\n" +
+            "• 'Kings Cross to Oxford Circus'\n" +
+            "• 'Liverpool St to Canary Wharf'\n" +
+            "• 'Buckhursthill to Bank'";
+    }
+
+    private String simplifyStationName(String stationName) {
+        return stationName.toLowerCase()
+                .replace("'s", "s")
+                .replace("'", "")
+                .replace(".", "")
+                .replace("-", "")
+                .replace(" st pancras", "")
+                .replace(" st ", " ")
+                .replace(" street", " st")
+                .replace(" road", " rd")
+                .replace(" square", " sq")
+                .replace(" circus", " circus")
+                .replace(" hill", "hill")
+                .replace(" & ", " ")
+                .replace(" and ", " ")
+                .replaceAll("\\s+", "")
+                .trim();
     }
 
     private String getCachedResponse(String endpoint) throws IOException {
