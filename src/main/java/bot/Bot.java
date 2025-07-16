@@ -752,9 +752,12 @@ public class Bot extends TelegramLongPollingBot {
 
     private boolean isValidLineId(String lineId) {
         Set<String> validLines = Set.of(
+            // Tube lines
             "bakerloo", "central", "circle", "district", "hammersmith-city",
             "jubilee", "metropolitan", "northern", "piccadilly", "victoria",
-            "waterloo-city", "elizabeth", "london-overground", "dlr"
+            "waterloo-city", "elizabeth", "london-overground", "dlr",
+            // Overground lines
+            "liberty", "lioness", "mildmay", "suffragette", "weaver", "windrush"
         );
         return validLines.contains(lineId.toLowerCase());
     }
