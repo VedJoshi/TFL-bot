@@ -57,6 +57,12 @@ public class UserPreferencesService {
         public boolean isOnlyDisruptions() { return onlyDisruptions; }
     }
     
+    /**
+     * Retrieves all preferences for a specific user.
+     *
+     * @param userId The Telegram user ID
+     * @return UserPreferences object containing all user settings
+     */
     public UserPreferences getUserPreferences(Long userId) {
         try (Connection conn = dbManager.getConnection()) {
             // Ensure user exists
@@ -137,6 +143,13 @@ public class UserPreferencesService {
         }
     }
     
+    /**
+     * Adds a line to a user's favorites.
+     *
+     * @param userId The Telegram user ID
+     * @param lineName The name of the line to add
+     * @throws RuntimeException if the database operation fails
+     */
     public void addFavoriteLine(Long userId, String lineName) {
         try (Connection conn = dbManager.getConnection()) {
             ensureUserExists(conn, userId);

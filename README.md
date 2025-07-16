@@ -1,6 +1,11 @@
 # 🚇 TFLBot - London Transport Information Bot
 
-A sophisticated Telegram bot that provides real-time London Transport (TFL) information with intelligent notifications, user preferences, and robust error handling. Built with enterprise-grade architecture patterns and designed for scalability.
+## Latest Updates (v1.0)
+- Added comprehensive JavaDoc documentation
+- Improved error handling and user feedback
+- Enhanced journey planning with natural language processing
+- Added station accessibility information
+- Implemented smart caching for API responses
 
 ## Project Overview
 
@@ -212,10 +217,110 @@ Once running, test these key features:
 3. **Schedule Alerts**: Use the Schedule Alerts button and follow prompts
 4. **Line Status**: Use the menu to check individual lines
 
-### Database Setup
+### Development Guide
 
-1. **Create PostgreSQL database**
-2. **Run migration scripts** (located in `src/main/resources/db/`)
-3. **Verify connection** through application health endpoint
+#### Setting Up Development Environment
+
+1. **Prerequisites Installation**
+```bash
+# Install Java 11+
+sudo apt update
+sudo apt install openjdk-11-jdk
+
+# Install Maven
+sudo apt install maven
+
+# Install PostgreSQL
+sudo apt install postgresql postgresql-contrib
+```
+
+2. **Database Setup**
+```sql
+-- Create database
+CREATE DATABASE tflbot;
+
+-- Create required tables
+\i src/main/resources/db/init.sql
+```
+
+3. **Environment Configuration**
+```bash
+# Required environment variables
+export BOT_TOKEN=your_telegram_bot_token
+export DATABASE_URL=jdbc:postgresql://localhost:5432/tflbot
+```
+
+#### Build and Run
+
+1. **Build the Project**
+```bash
+mvn clean install
+```
+
+2. **Run Tests**
+```bash
+mvn test
+```
+
+3. **Run Application**
+```bash
+java -jar target/UpdatedTFLBot-1.0-SNAPSHOT.jar
+```
+
+#### Contributing
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Add proper JavaDoc to new methods
+4. Ensure tests pass with `mvn test`
+5. Commit your changes (`git commit -m 'Add amazing feature'`)
+6. Push to the branch (`git push origin feature/AmazingFeature`)
+7. Open a Pull Request
+
+## API Documentation
+
+### TFL API Integration
+- Base URL: `https://api.tfl.gov.uk`
+- Rate Limits: 500 requests per minute
+- Authentication: App key required
+
+### Endpoints Used
+- `/Line/Mode/tube/Status` - Get tube line statuses
+- `/StopPoint/Search` - Search for stations
+- `/Journey/JourneyResults` - Plan journeys
+
+## Class Documentation
+
+### Main Components
+
+#### Bot.java
+Core bot class handling Telegram interactions:
+- Message processing
+- Command handling
+- User interface elements
+
+#### TFLService.java
+TFL API integration service:
+- API request handling
+- Response parsing
+- Caching implementation
+
+#### UserPreferencesService.java
+User data management:
+- Preference storage
+- Scheduled notifications
+- Favorites management
+
+## Monitoring & Maintenance
+- **Health Check Endpoints**: `/health`, `/status` for monitoring integration
+- **Graceful Shutdown**: Proper resource cleanup on application termination
+- **Rolling Updates**: Zero-downtime deployment capability
+- **Log Aggregation**: Structured logging for centralized monitoring
+
+### Configuration Management
+- **Environment Variables**: Secure configuration without hardcoded values
+- **Platform Detection**: Automatic adaptation to deployment environment
+- **Database Connection**: Flexible connection string management
+- **Feature Toggles**: Runtime feature enabling/disabling capability
 
 The bot will automatically start polling for messages and initialize all background services. Monitor the logs for successful startup confirmation and any configuration issues.

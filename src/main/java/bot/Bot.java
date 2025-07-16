@@ -16,6 +16,14 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
+/**
+ * Main bot class that handles Telegram interactions and command processing.
+ * This class extends TelegramLongPollingBot and provides the core functionality
+ * for the TFL (Transport for London) information bot.
+ *
+ * @author Ved
+ * @version 1.0
+ */
 public class Bot extends TelegramLongPollingBot {
     private static final Logger logger = LoggerFactory.getLogger(Bot.class);
 
@@ -390,6 +398,7 @@ public class Bot extends TelegramLongPollingBot {
         // Define the lines in a custom layout
         List<List<InlineKeyboardButton>> buttons = new ArrayList<>();
 
+        // Underground lines
         buttons.add(List.of(
                 InlineKeyboardButton.builder().text("Bakerloo").callbackData("bakerloo").build(),
                 InlineKeyboardButton.builder().text("Central").callbackData("central").build(),
@@ -398,7 +407,7 @@ public class Bot extends TelegramLongPollingBot {
 
         buttons.add(List.of(
                 InlineKeyboardButton.builder().text("District").callbackData("district").build(),
-                InlineKeyboardButton.builder().text("Waterloo & City").callbackData("waterloo-city").build(),
+                InlineKeyboardButton.builder().text("W & City").callbackData("waterloo-city").build(),
                 InlineKeyboardButton.builder().text("Jubilee").callbackData("jubilee").build()
         ));
 
@@ -410,7 +419,28 @@ public class Bot extends TelegramLongPollingBot {
 
         buttons.add(List.of(
                 InlineKeyboardButton.builder().text("Victoria").callbackData("victoria").build(),
-                InlineKeyboardButton.builder().text("Hammersmith & City").callbackData("hammersmith-city").build()
+                InlineKeyboardButton.builder().text("H & City").callbackData("hammersmith-city").build()
+        ));
+
+        // Divider
+        buttons.add(List.of(
+                InlineKeyboardButton.builder().text("📍 London Overground Lines 📍").callbackData("overground_divider").build()
+        ));
+
+        // Overground lines - arrange in pairs
+        buttons.add(List.of(
+                InlineKeyboardButton.builder().text("Liberty").callbackData("liberty").build(),
+                InlineKeyboardButton.builder().text("Lioness").callbackData("lioness").build()
+        ));
+
+        buttons.add(List.of(
+                InlineKeyboardButton.builder().text("Mildmay").callbackData("mildmay").build(),
+                InlineKeyboardButton.builder().text("Suffragette").callbackData("suffragette").build()
+        ));
+
+        buttons.add(List.of(
+                InlineKeyboardButton.builder().text("Weaver").callbackData("weaver").build(),
+                InlineKeyboardButton.builder().text("Windrush").callbackData("windrush").build()
         ));
 
         InlineKeyboardMarkup keyboard = InlineKeyboardMarkup.builder()
@@ -603,6 +633,13 @@ public class Bot extends TelegramLongPollingBot {
         return dbUrl.replaceAll("password=[^&\\s]+", "password=****");
     }
 
+    /**
+     * Handles incoming journey planner requests.
+     * Supports both "from X to Y" and "X to Y" formats.
+     *
+     * @param chatId The Telegram chat ID to send the response to
+     * @param messageText The raw message text containing journey endpoints
+     */
     private void handleJourneyPlannerInput(long chatId, String messageText) {
         try {
             String from, to;
@@ -656,6 +693,13 @@ public class Bot extends TelegramLongPollingBot {
         }
     }
 
+    /**
+     * Validates and processes scheduled notification time inputs.
+     *
+     * @param chatId The Telegram chat ID to send the response to
+     * @param userId The user's Telegram ID
+     * @param timeText The time input in HH:MM format
+     */
     private void handleScheduleTimeInput(long chatId, Long userId, String timeText) {
         if (!preferencesService.isValidTime(timeText)) {
             sendText(chatId, "❌ Invalid time format. Please use HH:MM (24-hour format).\nExample: 08:30 or 17:45");
@@ -715,6 +759,13 @@ public class Bot extends TelegramLongPollingBot {
         return validLines.contains(lineId.toLowerCase());
     }
 
+    /**
+     * Processes station information requests.
+     * Provides live arrivals, facilities, and accessibility information.
+     *
+     * @param chatId The Telegram chat ID to send the response to
+     * @param stationName The name of the station to look up
+     */
     private void handleStationInfoInput(long chatId, String stationName) {
         try {
             String capitalizedStationName = capitalizeWords(stationName.trim());
@@ -746,6 +797,12 @@ public class Bot extends TelegramLongPollingBot {
         }
     }
 
+    /**
+     * Capitalizes the first letter of each word in a text string.
+     *
+     * @param text The input text to capitalize
+     * @return The text with first letter of each word capitalized
+     */
     private String capitalizeWords(String text) {
         if (text == null || text.isEmpty()) {
             return text;

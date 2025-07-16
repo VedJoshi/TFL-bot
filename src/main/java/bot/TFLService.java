@@ -16,6 +16,10 @@ import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * Service class for interacting with the Transport for London (TFL) API.
+ * Handles all API requests, response parsing, and caching of TFL data.
+ */
 public class TFLService {
     private static final Logger logger = LoggerFactory.getLogger(TFLService.class);
     private static final String API_BASE_URL = "https://api.tfl.gov.uk";
@@ -44,12 +48,37 @@ public class TFLService {
     }
 
     // FIXED: Correct endpoint with lowercase and app_key
+    /**
+     * Retrieves status information for all London Underground and Overground lines.
+     *
+     * @return JSON string containing status information for all lines
+     * @throws IOException if the API request fails
+     */
     public String getAllLineStatuses() throws IOException {
-        String endpoint = API_BASE_URL + "/line/mode/tube/status?app_key=" + APP_KEY;
-        return getCachedResponse(endpoint);
+        // Get tube statuses
+        String tubeEndpoint = API_BASE_URL + "/line/mode/tube/status?app_key=" + APP_KEY;
+        String tubeResponse = getCachedResponse(tubeEndpoint);
+
+        // Get overground statuses
+        String overgroundEndpoint = API_BASE_URL + "/line/mode/overground/status?app_key=" + APP_KEY;
+        String overgroundResponse = getCachedResponse(overgroundEndpoint);
+
+        // Combine responses into a single array
+        String combinedResponse = "[" + 
+            tubeResponse.substring(1, tubeResponse.length() - 1) + "," +
+            overgroundResponse.substring(1);
+        return combinedResponse;
     }
 
     // FIXED: Correct endpoint with lowercase and app_key
+    /**
+     * Gets the status of a specific line.
+     *
+     * @param lineId The ID of the line to check
+     * @return JSON string containing the line's status
+     * @throws IOException if the API request fails
+     * @throws IllegalArgumentException if the lineId is invalid
+     */
     public String getLineStatus(String lineId) throws IOException {
         if (lineId == null || lineId.trim().isEmpty()) {
             throw new IllegalArgumentException("Line ID cannot be null or empty");
@@ -59,17 +88,34 @@ public class TFLService {
             throw new IllegalArgumentException("Invalid line ID: " + lineId);
         }
         
+        // Check if it's an overground line
+        if (isOvergroundLine(lineId)) {
+            String endpoint = API_BASE_URL + "/line/" + lineId.toLowerCase() + "/status?app_key=" + APP_KEY;
+            return getCachedResponse(endpoint);
+        }
+        
+        // Default to tube line
         String endpoint = API_BASE_URL + "/line/" + lineId.toLowerCase().replace(" ", "-") + "/status?app_key=" + APP_KEY;
         return getCachedResponse(endpoint);
     }
 
     private boolean isValidLineId(String lineId) {
         Set<String> validLines = Set.of(
+            // Tube lines
             "bakerloo", "central", "circle", "district", "hammersmith-city",
             "jubilee", "metropolitan", "northern", "piccadilly", "victoria",
-            "waterloo-city", "elizabeth", "london-overground", "dlr"
+            "waterloo-city", "elizabeth", "london-overground", "dlr",
+            // Overground lines
+            "liberty", "lioness", "mildmay", "suffragette", "weaver", "windrush"
         );
         return validLines.contains(lineId.toLowerCase());
+    }
+
+    private boolean isOvergroundLine(String lineId) {
+        Set<String> overgroundLines = Set.of(
+            "liberty", "lioness", "mildmay", "suffragette", "weaver", "windrush"
+        );
+        return overgroundLines.contains(lineId.toLowerCase());
     }
 
     public List<String> getAllLineNames() throws IOException {
@@ -154,7 +200,7 @@ public class TFLService {
             String response = getCachedResponse(endpoint);
             return parseJourneyOptions(response);
         } catch (IOException e) {
-            // If we get a 300 status, try with ICS codes
+            // On 300 status, attempt retry with ICS codes
             if (e.getMessage().contains("300")) {
                 logger.info("Attempting to resolve station codes for {} to {}", fromStation, toStation);
                 return tryJourneyWithStationCodes(fromStation, toStation);

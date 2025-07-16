@@ -89,6 +89,7 @@ This creates `target/UpdatedTFLBot-1.0-SNAPSHOT.jar`
 2. **Add your actual values**
    ```bash
    export BOT_TOKEN='your_actual_bot_token'
+   # Database connection URL with RDS endpoint and credentials
    export DATABASE_URL='jdbc:postgresql://your-rds-endpoint:5432/postgres?user=postgres&password=your_password'
    export PORT=8080
    ```
