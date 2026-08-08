@@ -23,7 +23,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class TFLService {
     private static final Logger logger = LoggerFactory.getLogger(TFLService.class);
     private static final String API_BASE_URL = "https://api.tfl.gov.uk";
-    private static final String APP_KEY = "***REDACTED***";
+    private static final String APP_KEY = System.getenv("TFL_APP_KEY") != null ? System.getenv("TFL_APP_KEY") : "";
     private static final int CONNECTION_TIMEOUT = 10000; // 10 seconds
     private static final int READ_TIMEOUT = 15000; // 15 seconds
     private static final int MAX_RETRIES = 3;
